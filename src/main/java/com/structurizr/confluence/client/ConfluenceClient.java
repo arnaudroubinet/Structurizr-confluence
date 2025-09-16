@@ -136,7 +136,25 @@ public class ConfluenceClient {
             try (CloseableHttpResponse getResponse = httpClient.execute(httpGet)) {
                 String getResponseBody = EntityUtils.toString(getResponse.getEntity());
                 JsonNode getResponseJson = objectMapper.readTree(getResponseBody);
-                currentVersion = getResponseJson.get("version").get("number").asInt();
+                
+                // Check if the response contains an error
+                if (getResponse.getStatusLine().getStatusCode() != 200) {
+                    throw new RuntimeException("Failed to get page: " + getResponse.getStatusLine().getStatusCode() + 
+                        " - " + getResponseBody);
+                }
+                
+                // Check if the version field exists
+                JsonNode versionNode = getResponseJson.get("version");
+                if (versionNode == null) {
+                    throw new RuntimeException("Page response missing version field: " + getResponseBody);
+                }
+                
+                JsonNode numberNode = versionNode.get("number");
+                if (numberNode == null) {
+                    throw new RuntimeException("Page version missing number field: " + getResponseBody);
+                }
+                
+                currentVersion = numberNode.asInt();
             }
             
             // Update page

@@ -174,7 +174,11 @@ public class ConfluenceExporter {
             doc.h3(title);
             
             for (View view : views) {
-                doc.h4(view.getTitle());
+                String viewTitle = view.getTitle();
+                if (viewTitle == null || viewTitle.trim().isEmpty()) {
+                    viewTitle = view.getKey() != null ? view.getKey() : "Untitled View";
+                }
+                doc.h4(viewTitle);
                 
                 if (view.getDescription() != null && !view.getDescription().trim().isEmpty()) {
                     doc.paragraph(view.getDescription());
