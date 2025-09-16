@@ -1,0 +1,14 @@
+# Confluence Configuration Example
+# Copy this file to confluence.properties and update with your values
+
+# Confluence Cloud base URL (your Atlassian domain)
+confluence.baseUrl=https://your-domain.atlassian.net
+
+# Your Atlassian account email
+confluence.username=your-email@example.com
+
+# Your Confluence API token (generate at https://id.atlassian.com/manage-profile/security/api-tokens)
+confluence.apiToken=your-api-token-here
+
+# The space key where documentation will be created
+confluence.spaceKey=SPACE
