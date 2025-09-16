@@ -137,6 +137,143 @@ This library uses Atlassian's official ADF builder library (`com.atlassian.strid
 - Code blocks and inline code
 - Links and references
 
+## Building and Testing
+
+### Prerequisites
+
+- Java 11 or higher
+- Maven 3.6 or higher
+- Internet connection for downloading dependencies
+
+### Build Instructions
+
+1. **Clean and compile the project:**
+   ```bash
+   mvn clean compile
+   ```
+
+2. **Run all unit tests (no network required):**
+   ```bash
+   mvn test -Dtest=AdfIntegrationTest
+   ```
+
+3. **Build the JAR file:**
+   ```bash
+   mvn package
+   ```
+
+### Testing Strategy
+
+The project includes multiple levels of testing:
+
+#### Unit Tests (Always Green ✅)
+These tests validate ADF document generation and basic functionality without requiring network access:
+
+```bash
+# Run ADF unit tests
+mvn test -Dtest=AdfIntegrationTest
+
+# Expected output: BUILD SUCCESS with 2 tests passed
+```
+
+#### Integration Tests (Require Credentials)
+These tests validate real Confluence integration and require environment variables:
+
+```bash
+# Set environment variables
+export CONFLUENCE_USER="your-email@example.com"
+export CONFLUENCE_TOKEN="your-confluence-api-token"
+
+# Run all integration tests
+mvn test -Dtest=ConfluenceIntegrationTest
+
+# Run specific page update test
+mvn test -Dtest=ConfluenceIntegrationTest#shouldUpdateSpecificConfluencePage
+```
+
+#### Test Execution Rules
+
+**✅ MANDATORY**: All tests must be green (passing) before submitting PRs:
+
+1. **Always run unit tests first:**
+   ```bash
+   mvn clean compile test -Dtest=AdfIntegrationTest
+   ```
+   - These must pass with BUILD SUCCESS
+   - No network dependencies
+   - Validates ADF document generation
+
+2. **Run integration tests with credentials:**
+   ```bash
+   export CONFLUENCE_USER="your-email@example.com"
+   export CONFLUENCE_TOKEN="your-confluence-api-token"
+   mvn test -Dtest=ConfluenceIntegrationTest
+   ```
+   - Requires valid Confluence credentials
+   - Tests real page creation/updates
+   - Validates end-to-end functionality
+
+3. **Verify specific page update:**
+   ```bash
+   mvn test -Dtest=ConfluenceIntegrationTest#shouldUpdateSpecificConfluencePage
+   ```
+   - Updates page ID 10977556 specifically
+   - **SCREENSHOT REQUIRED**: Must include screenshot of updated Confluence page
+
+### Screenshot Requirements
+
+**⚠️ MANDATORY FOR PR VALIDATION**: 
+
+When running the integration tests, you must provide a screenshot of the updated Confluence page as proof of successful execution. The screenshot should show:
+
+1. **Page Title**: "Structurizr Test Page - [Workspace Name]"
+2. **Content**: Updated ADF content with workspace details
+3. **Timestamp**: Showing recent update time
+4. **Page ID**: Visible in URL (10977556)
+
+#### How to Capture Screenshot:
+
+1. Run the specific page update test:
+   ```bash
+   export CONFLUENCE_USER="your-email@example.com"
+   export CONFLUENCE_TOKEN="your-confluence-api-token"
+   mvn test -Dtest=ConfluenceIntegrationTest#shouldUpdateSpecificConfluencePage
+   ```
+
+2. Navigate to: `https://arnaudroubinet.atlassian.net/wiki/spaces/Test/pages/10977556`
+
+3. Capture screenshot showing:
+   - Updated page content
+   - Timestamp of update
+   - Workspace information
+   - Page structure with ADF formatting
+
+4. Include screenshot in PR comments or description
+
+### Continuous Integration
+
+The build process should follow this sequence:
+
+```bash
+# 1. Clean build
+mvn clean
+
+# 2. Compile
+mvn compile
+
+# 3. Run unit tests (must pass)
+mvn test -Dtest=AdfIntegrationTest
+
+# 4. Package if tests pass
+mvn package
+
+# 5. Run integration tests (with credentials)
+export CONFLUENCE_USER="..." CONFLUENCE_TOKEN="..."
+mvn test -Dtest=ConfluenceIntegrationTest
+```
+
+All tests must be **GREEN** ✅ before proceeding to the next step.
+
 ## Dependencies
 
 - [Structurizr for Java](https://github.com/structurizr/java) - Core Structurizr library
