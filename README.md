@@ -170,6 +170,22 @@ The integration test will:
 - Validate the markdown content from the quality attributes example
 - Verify successful export without errors
 
+### Testing Specific Page Updates
+
+To test updating a specific Confluence page by ID:
+
+```bash
+export CONFLUENCE_USER="your-email@example.com"
+export CONFLUENCE_TOKEN="your-confluence-api-token"
+mvn test -Dtest=ConfluenceIntegrationTest#shouldUpdateSpecificConfluencePage
+```
+
+This test:
+- Updates Confluence page ID 10977556 directly
+- Uses simple ADF content with workspace information
+- Tests the direct page update functionality
+- Validates the page ID is correctly returned
+
 ## License
 
 This project is licensed under the Apache License 2.0.

@@ -1,6 +1,7 @@
 package com.structurizr.confluence;
 
 import com.structurizr.Workspace;
+import com.structurizr.confluence.client.ConfluenceClient;
 import com.structurizr.confluence.client.ConfluenceConfig;
 import com.structurizr.model.Model;
 import com.structurizr.model.Person;
@@ -142,5 +143,129 @@ class ConfluenceIntegrationTest {
         // Ensure it's substantial content
         assertTrue(QUALITY_ATTRIBUTES_MARKDOWN.length() > 1000, 
             "Markdown content should be substantial");
+    }
+    
+    @Test
+    @EnabledIfEnvironmentVariable(named = "CONFLUENCE_USER", matches = ".+")
+    @EnabledIfEnvironmentVariable(named = "CONFLUENCE_TOKEN", matches = ".+")
+    void shouldUpdateSpecificConfluencePage() throws Exception {
+        // Get environment variables
+        String confluenceUser = System.getenv("CONFLUENCE_USER");
+        String confluenceToken = System.getenv("CONFLUENCE_TOKEN");
+        
+        assertNotNull(confluenceUser, "CONFLUENCE_USER environment variable must be set");
+        assertNotNull(confluenceToken, "CONFLUENCE_TOKEN environment variable must be set");
+        
+        // Create a simple test workspace for the specific page
+        Workspace workspace = new Workspace("Test Page Update", 
+            "Testing update of specific Confluence page 10977556.");
+        
+        Model model = workspace.getModel();
+        
+        // Create simple model elements
+        Person testUser = model.addPerson("Test User", "A user for testing page updates.");
+        SoftwareSystem testSystem = model.addSoftwareSystem("Test System", 
+            "A system for testing Confluence page updates.");
+        testUser.uses(testSystem, "Interacts with");
+        
+        // Create a simple view
+        ViewSet views = workspace.getViews();
+        SystemContextView contextView = views.createSystemContextView(testSystem, 
+            "TestContext", "Test context view for page 10977556.");
+        contextView.addAllSoftwareSystems();
+        contextView.addAllPeople();
+        
+        // Configure Confluence connection
+        ConfluenceConfig config = new ConfluenceConfig(
+            "https://arnaudroubinet.atlassian.net",
+            confluenceUser,
+            confluenceToken,
+            "Test"
+        );
+        
+        // Test direct page update using the specific page ID
+        assertDoesNotThrow(() -> {
+            // Test direct page update using the ConfluenceClient
+            ConfluenceClient client = new ConfluenceClient(config);
+            
+            // Create simple ADF content for testing
+            String testAdfContent = String.format(
+                "{\n" +
+                "  \"version\": 1,\n" +
+                "  \"type\": \"doc\",\n" +
+                "  \"content\": [\n" +
+                "    {\n" +
+                "      \"type\": \"heading\",\n" +
+                "      \"attrs\": {\n" +
+                "        \"level\": 1\n" +
+                "      },\n" +
+                "      \"content\": [\n" +
+                "        {\n" +
+                "          \"type\": \"text\",\n" +
+                "          \"text\": \"Test Page Update from Structurizr Exporter\"\n" +
+                "        }\n" +
+                "      ]\n" +
+                "    },\n" +
+                "    {\n" +
+                "      \"type\": \"paragraph\",\n" +
+                "      \"content\": [\n" +
+                "        {\n" +
+                "          \"type\": \"text\",\n" +
+                "          \"text\": \"This page has been updated automatically by the Structurizr Confluence exporter integration test.\"\n" +
+                "        }\n" +
+                "      ]\n" +
+                "    },\n" +
+                "    {\n" +
+                "      \"type\": \"paragraph\",\n" +
+                "      \"content\": [\n" +
+                "        {\n" +
+                "          \"type\": \"text\",\n" +
+                "          \"text\": \"Workspace: \"\n" +
+                "        },\n" +
+                "        {\n" +
+                "          \"type\": \"text\",\n" +
+                "          \"marks\": [\n" +
+                "            {\n" +
+                "              \"type\": \"strong\"\n" +
+                "            }\n" +
+                "          ],\n" +
+                "          \"text\": \"%s\"\n" +
+                "        }\n" +
+                "      ]\n" +
+                "    },\n" +
+                "    {\n" +
+                "      \"type\": \"paragraph\",\n" +
+                "      \"content\": [\n" +
+                "        {\n" +
+                "          \"type\": \"text\",\n" +
+                "          \"text\": \"Updated at: \"\n" +
+                "        },\n" +
+                "        {\n" +
+                "          \"type\": \"text\",\n" +
+                "          \"marks\": [\n" +
+                "            {\n" +
+                "              \"type\": \"code\"\n" +
+                "            }\n" +
+                "          ],\n" +
+                "          \"text\": \"%s\"\n" +
+                "        }\n" +
+                "      ]\n" +
+                "    }\n" +
+                "  ]\n" +
+                "}", workspace.getName(), java.time.Instant.now().toString());
+            
+            // Update the specific page ID directly
+            String updatedPageId = client.updatePageById("10977556", 
+                "Structurizr Test Page - " + workspace.getName(), 
+                testAdfContent);
+            
+            assertEquals("10977556", updatedPageId, "Should return the same page ID");
+            
+        }, "Page update should complete successfully");
+        
+        System.out.println("✅ Successfully updated Confluence page 10977556!");
+        System.out.println("   Updated with workspace: " + workspace.getName());
+        System.out.println("   Page ID: 10977556");
+        System.out.println("   Test completed at: " + java.time.Instant.now());
     }
 }

@@ -181,4 +181,17 @@ public class ConfluenceClient {
             }
         }
     }
+    
+    /**
+     * Updates a specific page by ID with ADF content.
+     * 
+     * @param pageId the ID of the page to update
+     * @param title the new title for the page
+     * @param adfContent the ADF content to set
+     * @return the page ID
+     * @throws IOException if the update fails
+     */
+    public String updatePageById(String pageId, String title, String adfContent) throws IOException {
+        return updatePage(pageId, title, adfContent);
+    }
 }
