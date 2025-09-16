@@ -145,6 +145,31 @@ This library uses Atlassian's official ADF builder library (`com.atlassian.strid
 - Apache HttpClient - HTTP communication with Confluence API
 - SLF4J - Logging
 
+## Testing
+
+Integration tests cover ADF document generation using the official library. The implementation demonstrates proper usage of Atlassian's ADF builder and validates JSON serialization compatibility with Confluence Cloud.
+
+### Running Integration Tests
+
+To run the full integration test that exports to a real Confluence instance:
+
+1. Set environment variables:
+   ```bash
+   export CONFLUENCE_USER="your-email@example.com"
+   export CONFLUENCE_TOKEN="your-confluence-api-token"
+   ```
+
+2. Run the integration test:
+   ```bash
+   mvn test -Dtest=ConfluenceIntegrationTest
+   ```
+
+The integration test will:
+- Create a Financial Risk System workspace based on Structurizr examples
+- Export it to `https://arnaudroubinet.atlassian.net` in the TEST space
+- Validate the markdown content from the quality attributes example
+- Verify successful export without errors
+
 ## License
 
 This project is licensed under the Apache License 2.0.
