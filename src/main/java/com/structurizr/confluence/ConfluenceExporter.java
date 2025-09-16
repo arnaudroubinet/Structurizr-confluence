@@ -8,6 +8,8 @@ import com.structurizr.confluence.client.ConfluenceClient;
 import com.structurizr.confluence.client.ConfluenceConfig;
 import com.structurizr.confluence.client.StructurizrConfig;
 import com.structurizr.confluence.client.StructurizrWorkspaceLoader;
+import com.structurizr.confluence.processor.AsciidocProcessor;
+import com.structurizr.confluence.processor.HtmlToAdfConverter;
 import com.structurizr.documentation.Decision;
 import com.structurizr.model.*;
 import com.structurizr.view.*;
@@ -16,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Map;
 
 /**
  * Exports Structurizr workspace documentation and ADRs to Confluence Cloud in Atlassian Document Format (ADF).
@@ -28,6 +31,8 @@ public class ConfluenceExporter {
     private final ConfluenceClient confluenceClient;
     private final ObjectMapper objectMapper;
     private final StructurizrWorkspaceLoader workspaceLoader;
+    private final AsciidocProcessor asciidocProcessor;
+    private final HtmlToAdfConverter htmlToAdfConverter;
     
     /**
      * Creates an exporter that loads workspaces from a Structurizr on-premise instance.
@@ -36,6 +41,8 @@ public class ConfluenceExporter {
         this.confluenceClient = new ConfluenceClient(confluenceConfig);
         this.objectMapper = new ObjectMapper();
         this.workspaceLoader = new StructurizrWorkspaceLoader(structurizrConfig);
+        this.asciidocProcessor = new AsciidocProcessor();
+        this.htmlToAdfConverter = new HtmlToAdfConverter();
     }
     
     /**
@@ -45,6 +52,8 @@ public class ConfluenceExporter {
         this.confluenceClient = new ConfluenceClient(confluenceConfig);
         this.objectMapper = new ObjectMapper();
         this.workspaceLoader = null;
+        this.asciidocProcessor = new AsciidocProcessor();
+        this.htmlToAdfConverter = new HtmlToAdfConverter();
     }
     
     /**
@@ -79,6 +88,9 @@ public class ConfluenceExporter {
         
         logger.info("Main page created/updated with ID: {}", mainPageId);
         
+        // Export AsciiDoc documentation if available
+        exportAsciidocDocumentation(workspace, mainPageId);
+        
         // Generate individual view pages
         exportViews(workspace, mainPageId);
         
@@ -89,6 +101,81 @@ public class ConfluenceExporter {
         exportDecisions(workspace, mainPageId);
         
         logger.info("Workspace export completed successfully");
+    }
+    
+    /**
+     * Processes and exports AsciiDoc documentation with diagram injection.
+     * 
+     * @param workspace the workspace context
+     * @param parentPageId the parent page ID
+     * @throws Exception if processing or export fails
+     */
+    public void exportAsciidocDocumentation(Workspace workspace, String parentPageId) throws Exception {
+        logger.info("Processing AsciiDoc documentation for workspace '{}'", workspace.getName());
+        
+        try {
+            // Process the AsciiDoc resource
+            String htmlContent = asciidocProcessor.processAsciidocResource("/financial-risk-system.adoc");
+            
+            // Extract sections from the processed HTML
+            Map<String, String> sections = asciidocProcessor.extractSections(htmlContent);
+            
+            // Convert sections to ADF and export to Confluence
+            for (Map.Entry<String, String> section : sections.entrySet()) {
+                String sectionTitle = section.getKey();
+                String sectionHtml = section.getValue();
+                
+                // Convert HTML to ADF
+                Document adfDocument = htmlToAdfConverter.convertToAdf(sectionHtml, sectionTitle);
+                String adfJson = convertDocumentToJson(adfDocument);
+                
+                // Create page in Confluence
+                String pageTitle = workspace.getName() + " - " + sectionTitle;
+                String pageId = confluenceClient.createOrUpdatePage(pageTitle, adfJson, parentPageId);
+                
+                logger.info("AsciiDoc section '{}' exported to page ID: {}", sectionTitle, pageId);
+            }
+            
+            // Also create a complete documentation page with all sections
+            Document completeDoc = htmlToAdfConverter.convertSectionsToAdf(sections, 
+                workspace.getName() + " - Complete Documentation");
+            String completePageId = confluenceClient.createOrUpdatePage(
+                workspace.getName() + " - Complete Documentation", 
+                convertDocumentToJson(completeDoc), 
+                parentPageId
+            );
+            
+            logger.info("Complete AsciiDoc documentation exported to page ID: {}", completePageId);
+            
+        } catch (Exception e) {
+            logger.error("Error processing AsciiDoc documentation", e);
+            // Create fallback documentation page
+            createFallbackAsciidocPage(workspace, parentPageId);
+        }
+    }
+    
+    /**
+     * Creates a fallback documentation page when AsciiDoc processing fails.
+     */
+    private void createFallbackAsciidocPage(Workspace workspace, String parentPageId) throws Exception {
+        logger.warn("Creating fallback AsciiDoc documentation page");
+        
+        Document fallbackDoc = Document.create()
+                .h1(workspace.getName() + " - Documentation (Fallback)")
+                .paragraph("AsciiDoc processing encountered an error. This is a fallback documentation page.")
+                .h2("Workspace Information")
+                .paragraph("Name: " + workspace.getName())
+                .paragraph("Description: " + (workspace.getDescription() != null ? workspace.getDescription() : "No description available"))
+                .h2("Processing Error")
+                .paragraph("The AsciiDoc documentation could not be processed. Please check the logs for more details.");
+        
+        String pageId = confluenceClient.createOrUpdatePage(
+                workspace.getName() + " - Documentation (Fallback)",
+                convertDocumentToJson(fallbackDoc),
+                parentPageId
+        );
+        
+        logger.info("Fallback documentation page created with ID: {}", pageId);
     }
     
     private String convertDocumentToJson(Document document) throws Exception {

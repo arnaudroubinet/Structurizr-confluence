@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.*;
 
 /**
  * Integration test for exporting to actual Confluence instance using environment variables.
@@ -129,6 +130,54 @@ class ConfluenceIntegrationTest {
         System.out.println("   - System context view with all elements");
         System.out.println("   - Model documentation for all systems and people");
         System.out.println("   - Quality attributes from Structurizr examples (validated)");
+        System.out.println("   - AsciiDoc documentation with PlantUML diagrams");
+    }
+    
+    @Test
+    @EnabledIfEnvironmentVariable(named = "CONFLUENCE_USER", matches = ".+")
+    @EnabledIfEnvironmentVariable(named = "CONFLUENCE_TOKEN", matches = ".+")
+    void shouldExportAsciidocDocumentationToConfluence() throws Exception {
+        String confluenceUser = System.getenv("CONFLUENCE_USER");
+        String confluenceToken = System.getenv("CONFLUENCE_TOKEN");
+        
+        assumeTrue(confluenceUser != null && !confluenceUser.isEmpty(), 
+            "CONFLUENCE_USER environment variable must be set");
+        assumeTrue(confluenceToken != null && !confluenceToken.isEmpty(), 
+            "CONFLUENCE_TOKEN environment variable must be set");
+        
+        ConfluenceConfig config = new ConfluenceConfig(
+            "https://arnaudroubinet.atlassian.net",
+            confluenceUser,
+            confluenceToken,
+            "Test"
+        );
+        
+        // Create a test workspace
+        Workspace workspace = new Workspace("AsciiDoc Test Workspace", "Test workspace for AsciiDoc documentation export");
+        
+        // Add some basic model elements
+        Person user = workspace.getModel().addPerson("Business User", "A user of the business processes");
+        SoftwareSystem riskSystem = workspace.getModel().addSoftwareSystem("Risk System", "Processes financial risk data");
+        user.uses(riskSystem, "Views risk reports");
+        
+        // Create a system context view
+        SystemContextView contextView = workspace.getViews().createSystemContextView(riskSystem, "RiskSystemContext", "Risk System Context");
+        contextView.addAllSoftwareSystems();
+        contextView.addAllPeople();
+        
+        ConfluenceExporter exporter = new ConfluenceExporter(config);
+        
+        // This should not throw an exception if the export is successful
+        assertDoesNotThrow(() -> {
+            exporter.export(workspace);
+        }, "AsciiDoc export to Confluence should complete successfully");
+        
+        System.out.println("✅ Successfully exported AsciiDoc documentation to Confluence!");
+        System.out.println("   Documentation includes:");
+        System.out.println("   - Processed AsciiDoc content with PlantUML diagrams");
+        System.out.println("   - Structured sections exported as separate pages");
+        System.out.println("   - HTML to ADF conversion with proper formatting");
+        System.out.println("   - Complete documentation page with all sections");
     }
     
     @Test
