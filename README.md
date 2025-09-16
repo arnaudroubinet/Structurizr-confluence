@@ -356,3 +356,17 @@ This project is licensed under the Apache License 2.0.
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
+
+---
+
+## Local build (Java 21)
+
+- Prérequis: JDK 21 et Maven 3.9+
+- Build standard: `./scripts/build.sh`
+
+## Copilot
+
+Consulte `.github/COPILOT.md` pour les règles agent/local. En résumé:
+
+- Agent autonome: exécute systématiquement `mvn clean install` avant de terminer.
+- Mode local: propose l’exécution du build, non obligatoire.

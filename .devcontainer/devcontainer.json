@@ -1,0 +1,25 @@
+{
+  "name": "Structurizr Confluence Java 21",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "settings": {
+    "java.configuration.runtimes": [
+      {
+        "name": "JavaSE-21",
+        "path": "/usr/lib/jvm/java-21-openjdk-amd64",
+        "default": true
+      }
+    ]
+  },
+  "postCreateCommand": "./scripts/build.sh || true",
+  "features": {},
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "redhat.java"
+      ]
+    }
+  }
+}

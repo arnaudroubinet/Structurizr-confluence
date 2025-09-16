@@ -8,7 +8,7 @@ import com.structurizr.confluence.client.ConfluenceClient;
 import com.structurizr.confluence.client.ConfluenceConfig;
 import com.structurizr.confluence.client.StructurizrConfig;
 import com.structurizr.confluence.client.StructurizrWorkspaceLoader;
-import com.structurizr.confluence.processor.AsciidocProcessor;
+import com.structurizr.confluence.processor.AsciiDocConverter;
 import com.structurizr.confluence.processor.HtmlToAdfConverter;
 import com.structurizr.documentation.Decision;
 import com.structurizr.model.*;
@@ -16,9 +16,7 @@ import com.structurizr.view.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.Collection;
-import java.util.Map;
 
 /**
  * Exports Structurizr workspace documentation and ADRs to Confluence Cloud in Atlassian Document Format (ADF).
@@ -31,8 +29,8 @@ public class ConfluenceExporter {
     private final ConfluenceClient confluenceClient;
     private final ObjectMapper objectMapper;
     private final StructurizrWorkspaceLoader workspaceLoader;
-    private final AsciidocProcessor asciidocProcessor;
     private final HtmlToAdfConverter htmlToAdfConverter;
+    private final AsciiDocConverter asciiDocConverter;
     
     /**
      * Creates an exporter that loads workspaces from a Structurizr on-premise instance.
@@ -41,8 +39,8 @@ public class ConfluenceExporter {
         this.confluenceClient = new ConfluenceClient(confluenceConfig);
         this.objectMapper = new ObjectMapper();
         this.workspaceLoader = new StructurizrWorkspaceLoader(structurizrConfig);
-        this.asciidocProcessor = new AsciidocProcessor();
         this.htmlToAdfConverter = new HtmlToAdfConverter();
+        this.asciiDocConverter = new AsciiDocConverter();
     }
     
     /**
@@ -52,8 +50,8 @@ public class ConfluenceExporter {
         this.confluenceClient = new ConfluenceClient(confluenceConfig);
         this.objectMapper = new ObjectMapper();
         this.workspaceLoader = null;
-        this.asciidocProcessor = new AsciidocProcessor();
         this.htmlToAdfConverter = new HtmlToAdfConverter();
+        this.asciiDocConverter = new AsciiDocConverter();
     }
     
     /**
@@ -76,31 +74,88 @@ public class ConfluenceExporter {
      * @param workspace the workspace to export
      * @throws Exception if export fails
      */
-    public void export(Workspace workspace) throws Exception {
-        logger.info("Starting export of workspace '{}' to Confluence", workspace.getName());
-        
-        // Generate main documentation page
-        Document mainDoc = generateWorkspaceDocumentation(workspace);
+
+    public void export(Workspace workspace, String branchName) throws Exception {
+        logger.info("Starting export of workspace '{}' (branch '{}') to Confluence", workspace.getName(), branchName);
+
+        // Générer la page principale avec le nom de la branche
+        String mainPageTitle = branchName;
+        Document mainDoc = generateWorkspaceDocumentation(workspace, branchName);
         String mainPageId = confluenceClient.createOrUpdatePage(
-            workspace.getName() + " - Architecture Documentation", 
+            mainPageTitle,
             convertDocumentToJson(mainDoc)
         );
-        
+
         logger.info("Main page created/updated with ID: {}", mainPageId);
-        
-        // Export AsciiDoc documentation if available
-        exportAsciidocDocumentation(workspace, mainPageId);
-        
-        // Generate individual view pages
-        exportViews(workspace, mainPageId);
-        
-        // Generate model documentation
-        exportModel(workspace, mainPageId);
-        
-        // Generate ADRs (Architecture Decision Records)
-        exportDecisions(workspace, mainPageId);
-        
-        logger.info("Workspace export completed successfully");
+
+        // Créer la page Documentation sous la page principale
+        String documentationPageTitle = "Documentation";
+        Document documentationDoc = Document.create()
+            .h1("Documentation")
+            .paragraph("Cette page contient la documentation du workspace. Voir les sous-pages pour chaque section.")
+            .h2("Sommaire");
+
+        // Générer la liste des sections de documentation pour le sommaire
+        if (workspace.getDocumentation() != null && !workspace.getDocumentation().getSections().isEmpty()) {
+            documentationDoc.bulletList(list -> {
+                for (com.structurizr.documentation.Section section : workspace.getDocumentation().getSections()) {
+                    String sectionTitle = section.getTitle() != null && !section.getTitle().isEmpty() ? section.getTitle() : section.getFilename();
+                    String pageTitle = branchName + " - " + sectionTitle;
+                    list.item(pageTitle);
+                }
+            });
+        } else {
+            documentationDoc.paragraph("Aucune section de documentation trouvée dans le workspace.");
+        }
+
+        String documentationPageId = confluenceClient.createOrUpdatePage(
+            documentationPageTitle,
+            convertDocumentToJson(documentationDoc),
+            mainPageId
+        );
+        logger.info("Documentation page created/updated with ID: {}", documentationPageId);
+
+        // Exporter la documentation du workspace (sections) sous la page Documentation
+        exportWorkspaceDocumentationSections(workspace, documentationPageId, branchName);
+
+    // Générer les pages de vues
+    exportViews(workspace, mainPageId);
+
+    // Générer la documentation du modèle
+    exportModel(workspace, mainPageId);
+
+    // Générer les ADRs
+    exportDecisions(workspace, mainPageId);
+
+    // Générer la page Schémas
+    exportDiagramsPage(mainPageId, workspace);
+
+    logger.info("Workspace export completed successfully");
+    }
+
+    /**
+     * Closes resources used by the exporter.
+     */
+    public void close() {
+        if (asciiDocConverter != null) {
+            asciiDocConverter.close();
+        }
+    }
+    
+    /**
+     * Cleans the Confluence space by deleting all existing pages.
+     * 
+     * @throws Exception if cleanup fails
+     */
+    public void cleanConfluenceSpace() throws Exception {
+        logger.info("Starting Confluence space cleanup");
+        confluenceClient.cleanSpace();
+        logger.info("Confluence space cleanup completed");
+    }
+
+    // Pour compatibilité ascendante
+    public void export(Workspace workspace) throws Exception {
+        export(workspace, workspace.getName());
     }
     
     /**
@@ -110,96 +165,77 @@ public class ConfluenceExporter {
      * @param parentPageId the parent page ID
      * @throws Exception if processing or export fails
      */
-    public void exportAsciidocDocumentation(Workspace workspace, String parentPageId) throws Exception {
-        logger.info("Processing AsciiDoc documentation for workspace '{}'", workspace.getName());
-        
-        try {
-            // Process the AsciiDoc resource
-            String htmlContent = asciidocProcessor.processAsciidocResource("/financial-risk-system.adoc");
+    /**
+     * Exporte la documentation présente dans le Workspace (sections AsciiDoc déjà importées).
+     * @param workspace le workspace Structurizr
+     * @param parentPageId l'ID de la page parente Confluence
+     */
+    public void exportWorkspaceDocumentationSections(Workspace workspace, String parentPageId, String branchName) throws Exception {
+        if (workspace.getDocumentation() == null || workspace.getDocumentation().getSections().isEmpty()) {
+            logger.info("Aucune section de documentation trouvée dans le workspace");
+            return;
+        }
+
+        logger.info("Export des sections de documentation du workspace '{}', {} section(s)", workspace.getName(), workspace.getDocumentation().getSections().size());
+
+        // Exporter chaque section comme page Confluence
+        for (com.structurizr.documentation.Section section : workspace.getDocumentation().getSections()) {
+            String sectionTitle = section.getTitle() != null && !section.getTitle().isEmpty() ? section.getTitle() : section.getFilename();
+            String content = section.getContent();
+
+            // Déterminer le format et convertir si nécessaire
+            String htmlContent;
+            String formatName = section.getFormat() != null ? section.getFormat().name() : "";
             
-            // Extract sections from the processed HTML
-            Map<String, String> sections = asciidocProcessor.extractSections(htmlContent);
-            
-            // Convert sections to ADF and export to Confluence
-            for (Map.Entry<String, String> section : sections.entrySet()) {
-                String sectionTitle = section.getKey();
-                String sectionHtml = section.getValue();
-                
-                // Convert HTML to ADF
-                Document adfDocument = htmlToAdfConverter.convertToAdf(sectionHtml, sectionTitle);
-                String adfJson = convertDocumentToJson(adfDocument);
-                
-                // Create page in Confluence
-                String pageTitle = workspace.getName() + " - " + sectionTitle;
-                String pageId = confluenceClient.createOrUpdatePage(pageTitle, adfJson, parentPageId);
-                
-                logger.info("AsciiDoc section '{}' exported to page ID: {}", sectionTitle, pageId);
+            if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
+                logger.debug("Converting AsciiDoc content for section: {}", sectionTitle);
+                htmlContent = asciiDocConverter.convertToHtml(content, sectionTitle);
+            } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
+                logger.debug("Markdown content detected for section: {} (treating as HTML)", sectionTitle);
+                // Pour Markdown, on pourrait ajouter un convertisseur Markdown->HTML plus tard
+                htmlContent = content; // Traitement basique pour l'instant
+            } else {
+                logger.debug("Treating content as HTML for section: {} (format: {})", sectionTitle, formatName);
+                htmlContent = content; // Assume HTML ou texte brut
             }
-            
-            // Also create a complete documentation page with all sections
-            Document completeDoc = htmlToAdfConverter.convertSectionsToAdf(sections, 
-                workspace.getName() + " - Complete Documentation");
-            String completePageId = confluenceClient.createOrUpdatePage(
-                workspace.getName() + " - Complete Documentation", 
-                convertDocumentToJson(completeDoc), 
-                parentPageId
-            );
-            
-            logger.info("Complete AsciiDoc documentation exported to page ID: {}", completePageId);
-            
-        } catch (Exception e) {
-            logger.error("Error processing AsciiDoc documentation", e);
-            // Create fallback documentation page
-            createFallbackAsciidocPage(workspace, parentPageId);
+
+            // Convertir HTML vers ADF pour Confluence
+            Document adfDocument = htmlToAdfConverter.convertToAdf(htmlContent, sectionTitle);
+            String adfJson = convertDocumentToJson(adfDocument);
+
+            String pageTitle = branchName + " - " + sectionTitle;
+            String pageId = confluenceClient.createOrUpdatePage(pageTitle, adfJson, parentPageId);
+            logger.info("Section '{}' exportée vers la page ID: {}", sectionTitle, pageId);
         }
     }
     
-    /**
-     * Creates a fallback documentation page when AsciiDoc processing fails.
-     */
-    private void createFallbackAsciidocPage(Workspace workspace, String parentPageId) throws Exception {
-        logger.warn("Creating fallback AsciiDoc documentation page");
-        
-        Document fallbackDoc = Document.create()
-                .h1(workspace.getName() + " - Documentation (Fallback)")
-                .paragraph("AsciiDoc processing encountered an error. This is a fallback documentation page.")
-                .h2("Workspace Information")
-                .paragraph("Name: " + workspace.getName())
-                .paragraph("Description: " + (workspace.getDescription() != null ? workspace.getDescription() : "No description available"))
-                .h2("Processing Error")
-                .paragraph("The AsciiDoc documentation could not be processed. Please check the logs for more details.");
-        
-        String pageId = confluenceClient.createOrUpdatePage(
-                workspace.getName() + " - Documentation (Fallback)",
-                convertDocumentToJson(fallbackDoc),
-                parentPageId
-        );
-        
-        logger.info("Fallback documentation page created with ID: {}", pageId);
-    }
     
+
+
     private String convertDocumentToJson(Document document) throws Exception {
         return objectMapper.writeValueAsString(document);
     }
+
+
     
-    private Document generateWorkspaceDocumentation(Workspace workspace) {
+    private Document generateWorkspaceDocumentation(Workspace workspace, String branchName) {
         Document doc = Document.create()
-            .h1(workspace.getName());
-        
+            .h1(branchName);
+
         // Description
         if (workspace.getDescription() != null && !workspace.getDescription().trim().isEmpty()) {
             doc.paragraph(workspace.getDescription());
         }
-        
+
         // Table of Contents
         doc.h2("Table of Contents");
-        
+
         // Add views section
         ViewSet views = workspace.getViews();
         if (hasViews(views)) {
             doc.bulletList(tocList -> {
                 tocList.item("Views");
-                
+
                 if (!views.getSystemLandscapeViews().isEmpty()) {
                     tocList.item("System Landscape Views");
                 }
@@ -215,9 +251,9 @@ public class ConfluenceExporter {
                 if (!views.getDeploymentViews().isEmpty()) {
                     tocList.item("Deployment Views");
                 }
-                
+
                 tocList.item("Model Documentation");
-                
+
                 // Add ADRs to table of contents if they exist
                 if (workspace.getDocumentation() != null && !workspace.getDocumentation().getDecisions().isEmpty()) {
                     tocList.item("Architecture Decision Records");
@@ -226,25 +262,25 @@ public class ConfluenceExporter {
         } else {
             doc.bulletList(tocList -> {
                 tocList.item("Model Documentation");
-                
+
                 // Add ADRs to table of contents if they exist
                 if (workspace.getDocumentation() != null && !workspace.getDocumentation().getDecisions().isEmpty()) {
                     tocList.item("Architecture Decision Records");
                 }
             });
         }
-        
+
         // Views Overview
         if (hasViews(views)) {
             doc.h2("Views Overview");
-            
+
             addViewsOverview(doc, views.getSystemLandscapeViews(), "System Landscape Views");
             addViewsOverview(doc, views.getSystemContextViews(), "System Context Views");
             addViewsOverview(doc, views.getContainerViews(), "Container Views");
             addViewsOverview(doc, views.getComponentViews(), "Component Views");
             addViewsOverview(doc, views.getDeploymentViews(), "Deployment Views");
         }
-        
+
         return doc;
     }
     
@@ -447,6 +483,28 @@ public class ConfluenceExporter {
             }
         });
         
+        // Add decision content (convert from AsciiDoc/Markdown if needed)
+        if (decision.getContent() != null && !decision.getContent().trim().isEmpty()) {
+            decisionDoc.h2("Content");
+            
+            String formatName = decision.getFormat() != null ? decision.getFormat().name() : "";
+            String htmlContent;
+            
+            if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
+                logger.debug("Converting AsciiDoc content for ADR: {}", decision.getTitle());
+                htmlContent = asciiDocConverter.convertToHtml(decision.getContent(), "ADR " + decision.getId());
+            } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
+                logger.debug("Markdown content detected for ADR: {} (treating as HTML)", decision.getTitle());
+                htmlContent = decision.getContent(); // Traitement basique pour l'instant
+            } else {
+                logger.debug("Treating content as HTML for ADR: {} (format: {})", decision.getTitle(), formatName);
+                htmlContent = decision.getContent(); // Assume HTML ou texte brut
+            }
+            
+            // Add the converted content to the document
+            decisionDoc.paragraph(htmlContent);
+        }
+        
         // Add links to other decisions
         if (!decision.getLinks().isEmpty()) {
             decisionDoc.h2("Related Decisions");
@@ -461,5 +519,51 @@ public class ConfluenceExporter {
         String pageTitle = "ADR " + decision.getId() + " - " + decision.getTitle();
         confluenceClient.createOrUpdatePage(pageTitle, convertDocumentToJson(decisionDoc), parentPageId);
         logger.info("Created/updated ADR page: {}", pageTitle);
+    }
+    
+    /**
+     * Crée une page "Schémas" sous la page principale, listant dynamiquement les PNG Structurizr pour chaque vue.
+     */
+    private void exportDiagramsPage(String parentPageId, Workspace workspace) throws Exception {
+        String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
+        String workspaceId = System.getenv("STRUCTURIZR_WORKSPACE_ID");
+        if (structurizrServerUrl == null) structurizrServerUrl = "https://static.structurizr.com";
+        if (workspaceId == null) workspaceId = "1";
+
+        Document diagramsDoc = Document.create()
+            .h1("Schémas")
+            .paragraph("Cette page regroupe tous les schémas PNG du workspace Structurizr (serveur: " + structurizrServerUrl + ", workspace: " + workspaceId + ").");
+
+        if (workspace == null) {
+            diagramsDoc.paragraph("Impossible d'accéder au workspace pour lister les vues.");
+        } else {
+            ViewSet views = workspace.getViews();
+            for (View view : views.getViews()) {
+                String diagramKey = view.getKey();
+                String diagramName = view.getTitle() != null && !view.getTitle().isEmpty() ? view.getTitle() : diagramKey;
+                String pngUrl = structurizrServerUrl + "/workspace/" + workspaceId + "/diagrams/" + diagramKey + ".png";
+                // Vérifier si l'image est accessible
+                boolean accessible = false;
+                try {
+                    java.net.HttpURLConnection connection = (java.net.HttpURLConnection) new java.net.URL(pngUrl).openConnection();
+                    connection.setRequestMethod("HEAD");
+                    connection.setConnectTimeout(2000);
+                    connection.setReadTimeout(2000);
+                    int responseCode = connection.getResponseCode();
+                    accessible = (responseCode >= 200 && responseCode < 300);
+                } catch (Exception e) {
+                    accessible = false;
+                }
+                diagramsDoc.h2(diagramName);
+                if (accessible) {
+                    diagramsDoc.paragraph("![" + diagramName + "](" + pngUrl + ")");
+                } else {
+                    diagramsDoc.paragraph("Erreur de récupération du schéma : " + pngUrl);
+                }
+            }
+        }
+
+        confluenceClient.createOrUpdatePage("Schémas", convertDocumentToJson(diagramsDoc), parentPageId);
+        logger.info("Page 'Schémas' créée/mise à jour sous la page principale (PNG Structurizr).");
     }
 }
