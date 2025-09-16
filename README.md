@@ -166,7 +166,7 @@ To run the full integration test that exports to a real Confluence instance:
 
 The integration test will:
 - Create a Financial Risk System workspace based on Structurizr examples
-- Export it to `https://arnaudroubinet.atlassian.net` in the TEST space
+- Export it to `https://arnaudroubinet.atlassian.net` in the Test space
 - Validate the markdown content from the quality attributes example
 - Verify successful export without errors
 

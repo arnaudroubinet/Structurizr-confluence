@@ -112,7 +112,7 @@ class ConfluenceIntegrationTest {
             "https://arnaudroubinet.atlassian.net",  // As specified in the comment
             confluenceUser,
             confluenceToken,
-            "TEST"  // Using TEST space for integration tests
+            "Test"  // Using Test space for integration tests
         );
         
         // Export to Confluence
