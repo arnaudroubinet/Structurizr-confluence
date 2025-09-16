@@ -89,7 +89,7 @@ Each page contains:
 
 ## ADF (Atlassian Document Format)
 
-This library generates documentation in ADF, which is the native format used by Confluence Cloud. ADF provides:
+This library uses Atlassian's official ADF builder library (`com.atlassian.stride:adf-builder`) to generate documentation in ADF, which is the native format used by Confluence Cloud. ADF provides:
 
 - Rich text formatting
 - Structured content (headings, paragraphs, lists)
@@ -99,7 +99,8 @@ This library generates documentation in ADF, which is the native format used by 
 ## Dependencies
 
 - [Structurizr for Java](https://github.com/structurizr/java) - Core Structurizr library
-- Jackson - JSON processing for ADF generation
+- [Atlassian ADF Builder](https://bitbucket.org/atlassian/adf-builder-java) - Official ADF document generation
+- Jackson - JSON processing for ADF serialization
 - Apache HttpClient - HTTP communication with Confluence API
 - SLF4J - Logging
 

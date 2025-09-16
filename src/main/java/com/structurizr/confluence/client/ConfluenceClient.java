@@ -2,7 +2,6 @@ package com.structurizr.confluence.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.structurizr.confluence.adf.AdfDocument;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -41,21 +40,21 @@ public class ConfluenceClient {
     /**
      * Creates or updates a page in Confluence with ADF content.
      */
-    public String createOrUpdatePage(String title, AdfDocument content) throws IOException {
-        return createOrUpdatePage(title, content, null);
+    public String createOrUpdatePage(String title, String adfContent) throws IOException {
+        return createOrUpdatePage(title, adfContent, null);
     }
     
     /**
      * Creates or updates a page in Confluence with ADF content under a specific parent.
      */
-    public String createOrUpdatePage(String title, AdfDocument content, String parentId) throws IOException {
+    public String createOrUpdatePage(String title, String adfContent, String parentId) throws IOException {
         // First, check if page exists
         String existingPageId = findPageByTitle(title);
         
         if (existingPageId != null) {
-            return updatePage(existingPageId, title, content);
+            return updatePage(existingPageId, title, adfContent);
         } else {
-            return createPage(title, content, parentId);
+            return createPage(title, adfContent, parentId);
         }
     }
     
@@ -78,7 +77,7 @@ public class ConfluenceClient {
         return null;
     }
     
-    private String createPage(String title, AdfDocument content, String parentId) throws IOException {
+    private String createPage(String title, String adfContent, String parentId) throws IOException {
         try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
             String url = config.getBaseUrl() + "/wiki/rest/api/content";
             HttpPost httpPost = new HttpPost(url);
@@ -101,7 +100,7 @@ public class ConfluenceClient {
             
             Map<String, Object> body = new HashMap<>();
             Map<String, Object> atlas = new HashMap<>();
-            atlas.put("value", objectMapper.writeValueAsString(content));
+            atlas.put("value", adfContent);
             atlas.put("representation", "atlas_doc_format");
             body.put("atlas_doc_format", atlas);
             pageData.put("body", body);
@@ -125,7 +124,7 @@ public class ConfluenceClient {
         }
     }
     
-    private String updatePage(String pageId, String title, AdfDocument content) throws IOException {
+    private String updatePage(String pageId, String title, String adfContent) throws IOException {
         try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
             // Get current page version
             String getUrl = config.getBaseUrl() + "/wiki/rest/api/content/" + pageId;
@@ -161,7 +160,7 @@ public class ConfluenceClient {
             
             Map<String, Object> body = new HashMap<>();
             Map<String, Object> atlas = new HashMap<>();
-            atlas.put("value", objectMapper.writeValueAsString(content));
+            atlas.put("value", adfContent);
             atlas.put("representation", "atlas_doc_format");
             body.put("atlas_doc_format", atlas);
             pageData.put("body", body);

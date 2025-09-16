@@ -1,8 +1,8 @@
 package com.structurizr.confluence;
 
+import com.atlassian.adf.Document;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.structurizr.Workspace;
-import com.structurizr.confluence.adf.AdfDocument;
-import com.structurizr.confluence.adf.AdfNode;
 import com.structurizr.confluence.client.ConfluenceClient;
 import com.structurizr.confluence.client.ConfluenceConfig;
 import com.structurizr.model.*;
@@ -21,9 +21,11 @@ public class ConfluenceExporter {
     private static final Logger logger = LoggerFactory.getLogger(ConfluenceExporter.class);
     
     private final ConfluenceClient confluenceClient;
+    private final ObjectMapper objectMapper;
     
     public ConfluenceExporter(ConfluenceConfig config) {
         this.confluenceClient = new ConfluenceClient(config);
+        this.objectMapper = new ObjectMapper();
     }
     
     /**
@@ -36,10 +38,10 @@ public class ConfluenceExporter {
         logger.info("Starting export of workspace '{}' to Confluence", workspace.getName());
         
         // Generate main documentation page
-        AdfDocument mainDoc = generateWorkspaceDocumentation(workspace);
+        Document mainDoc = generateWorkspaceDocumentation(workspace);
         String mainPageId = confluenceClient.createOrUpdatePage(
             workspace.getName() + " - Architecture Documentation", 
-            mainDoc
+            convertDocumentToJson(mainDoc)
         );
         
         logger.info("Main page created/updated with ID: {}", mainPageId);
@@ -53,54 +55,53 @@ public class ConfluenceExporter {
         logger.info("Workspace export completed successfully");
     }
     
-    private AdfDocument generateWorkspaceDocumentation(Workspace workspace) {
-        AdfDocument doc = new AdfDocument();
-        
-        // Title
-        doc.addContent(AdfNode.heading(1)
-            .addContent(AdfNode.text(workspace.getName())));
+    private String convertDocumentToJson(Document document) throws Exception {
+        return objectMapper.writeValueAsString(document);
+    }
+    
+    private Document generateWorkspaceDocumentation(Workspace workspace) {
+        Document doc = Document.create()
+            .h1(workspace.getName());
         
         // Description
         if (workspace.getDescription() != null && !workspace.getDescription().trim().isEmpty()) {
-            doc.addContent(AdfNode.paragraph()
-                .addContent(AdfNode.text(workspace.getDescription())));
+            doc.paragraph(workspace.getDescription());
         }
         
         // Table of Contents
-        doc.addContent(AdfNode.heading(2)
-            .addContent(AdfNode.text("Table of Contents")));
-        
-        AdfNode tocList = AdfNode.bulletList();
+        doc.h2("Table of Contents");
         
         // Add views section
         ViewSet views = workspace.getViews();
         if (hasViews(views)) {
-            AdfNode viewsItem = AdfNode.listItem()
-                .addContent(AdfNode.paragraph()
-                    .addContent(AdfNode.text("Views")));
-            
-            AdfNode viewsList = AdfNode.bulletList();
-            addViewsToToc(views.getSystemLandscapeViews(), viewsList, "System Landscape Views");
-            addViewsToToc(views.getSystemContextViews(), viewsList, "System Context Views");
-            addViewsToToc(views.getContainerViews(), viewsList, "Container Views");
-            addViewsToToc(views.getComponentViews(), viewsList, "Component Views");
-            addViewsToToc(views.getDeploymentViews(), viewsList, "Deployment Views");
-            
-            viewsItem.addContent(viewsList);
-            tocList.addContent(viewsItem);
+            doc.bulletList(tocList -> {
+                tocList.item("Views");
+                
+                if (!views.getSystemLandscapeViews().isEmpty()) {
+                    tocList.item("System Landscape Views");
+                }
+                if (!views.getSystemContextViews().isEmpty()) {
+                    tocList.item("System Context Views");
+                }
+                if (!views.getContainerViews().isEmpty()) {
+                    tocList.item("Container Views");
+                }
+                if (!views.getComponentViews().isEmpty()) {
+                    tocList.item("Component Views");
+                }
+                if (!views.getDeploymentViews().isEmpty()) {
+                    tocList.item("Deployment Views");
+                }
+                
+                tocList.item("Model Documentation");
+            });
+        } else {
+            doc.bulletList(tocList -> tocList.item("Model Documentation"));
         }
-        
-        // Add model section
-        tocList.addContent(AdfNode.listItem()
-            .addContent(AdfNode.paragraph()
-                .addContent(AdfNode.text("Model Documentation"))));
-        
-        doc.addContent(tocList);
         
         // Views Overview
         if (hasViews(views)) {
-            doc.addContent(AdfNode.heading(2)
-                .addContent(AdfNode.text("Views Overview")));
+            doc.h2("Views Overview");
             
             addViewsOverview(doc, views.getSystemLandscapeViews(), "System Landscape Views");
             addViewsOverview(doc, views.getSystemContextViews(), "System Context Views");
@@ -120,47 +121,24 @@ public class ConfluenceExporter {
                 views.getDeploymentViews().size() > 0);
     }
     
-    private void addViewsToToc(Collection<? extends View> views, AdfNode parentList, String title) {
+    private void addViewsOverview(Document doc, Collection<? extends View> views, String title) {
         if (!views.isEmpty()) {
-            AdfNode categoryItem = AdfNode.listItem()
-                .addContent(AdfNode.paragraph()
-                    .addContent(AdfNode.text(title)));
-            
-            AdfNode categoryList = AdfNode.bulletList();
-            for (View view : views) {
-                categoryList.addContent(AdfNode.listItem()
-                    .addContent(AdfNode.paragraph()
-                        .addContent(AdfNode.text(view.getTitle()))));
-            }
-            
-            categoryItem.addContent(categoryList);
-            parentList.addContent(categoryItem);
-        }
-    }
-    
-    private void addViewsOverview(AdfDocument doc, Collection<? extends View> views, String title) {
-        if (!views.isEmpty()) {
-            doc.addContent(AdfNode.heading(3)
-                .addContent(AdfNode.text(title)));
+            doc.h3(title);
             
             for (View view : views) {
-                doc.addContent(AdfNode.heading(4)
-                    .addContent(AdfNode.text(view.getTitle())));
+                doc.h4(view.getTitle());
                 
                 if (view.getDescription() != null && !view.getDescription().trim().isEmpty()) {
-                    doc.addContent(AdfNode.paragraph()
-                        .addContent(AdfNode.text(view.getDescription())));
+                    doc.paragraph(view.getDescription());
                 }
                 
                 // Add view key information
-                doc.addContent(AdfNode.paragraph()
-                    .addContent(AdfNode.text("Key: "))
-                    .addContent(AdfNode.text(view.getKey()).addMark(com.structurizr.confluence.adf.AdfMark.code())));
+                doc.paragraph("Key: " + view.getKey());
             }
         }
     }
     
-    private void exportViews(Workspace workspace, String parentPageId) throws IOException {
+    private void exportViews(Workspace workspace, String parentPageId) throws Exception {
         ViewSet views = workspace.getViews();
         
         exportViewCategory(views.getSystemLandscapeViews(), "System Landscape Views", parentPageId);
@@ -170,46 +148,39 @@ public class ConfluenceExporter {
         exportViewCategory(views.getDeploymentViews(), "Deployment Views", parentPageId);
     }
     
-    private void exportViewCategory(Collection<? extends View> views, String categoryName, String parentPageId) throws IOException {
+    private void exportViewCategory(Collection<? extends View> views, String categoryName, String parentPageId) throws Exception {
         if (views.isEmpty()) {
             return;
         }
         
         // Create category page
-        AdfDocument categoryDoc = new AdfDocument();
-        categoryDoc.addContent(AdfNode.heading(1)
-            .addContent(AdfNode.text(categoryName)));
+        Document categoryDoc = Document.create()
+            .h1(categoryName);
         
         for (View view : views) {
-            categoryDoc.addContent(AdfNode.heading(2)
-                .addContent(AdfNode.text(view.getTitle())));
+            categoryDoc.h2(view.getTitle());
             
             if (view.getDescription() != null && !view.getDescription().trim().isEmpty()) {
-                categoryDoc.addContent(AdfNode.paragraph()
-                    .addContent(AdfNode.text(view.getDescription())));
+                categoryDoc.paragraph(view.getDescription());
             }
             
             // Add view properties
-            categoryDoc.addContent(AdfNode.paragraph()
-                .addContent(AdfNode.text("Key: "))
-                .addContent(AdfNode.text(view.getKey()).addMark(com.structurizr.confluence.adf.AdfMark.code())));
+            categoryDoc.paragraph("Key: " + view.getKey());
         }
         
-        confluenceClient.createOrUpdatePage(categoryName, categoryDoc, parentPageId);
+        confluenceClient.createOrUpdatePage(categoryName, convertDocumentToJson(categoryDoc), parentPageId);
         logger.info("Created/updated page for {}", categoryName);
     }
     
-    private void exportModel(Workspace workspace, String parentPageId) throws IOException {
+    private void exportModel(Workspace workspace, String parentPageId) throws Exception {
         Model model = workspace.getModel();
         
-        AdfDocument modelDoc = new AdfDocument();
-        modelDoc.addContent(AdfNode.heading(1)
-            .addContent(AdfNode.text("Model Documentation")));
+        Document modelDoc = Document.create()
+            .h1("Model Documentation");
         
         // People
         if (!model.getPeople().isEmpty()) {
-            modelDoc.addContent(AdfNode.heading(2)
-                .addContent(AdfNode.text("People")));
+            modelDoc.h2("People");
             
             for (Person person : model.getPeople()) {
                 addElementDocumentation(modelDoc, person);
@@ -218,24 +189,21 @@ public class ConfluenceExporter {
         
         // Software Systems
         if (!model.getSoftwareSystems().isEmpty()) {
-            modelDoc.addContent(AdfNode.heading(2)
-                .addContent(AdfNode.text("Software Systems")));
+            modelDoc.h2("Software Systems");
             
             for (SoftwareSystem softwareSystem : model.getSoftwareSystems()) {
                 addElementDocumentation(modelDoc, softwareSystem);
                 
                 // Containers
                 if (!softwareSystem.getContainers().isEmpty()) {
-                    modelDoc.addContent(AdfNode.heading(4)
-                        .addContent(AdfNode.text("Containers")));
+                    modelDoc.h4("Containers");
                     
                     for (Container container : softwareSystem.getContainers()) {
                         addElementDocumentation(modelDoc, container);
                         
                         // Components
                         if (!container.getComponents().isEmpty()) {
-                            modelDoc.addContent(AdfNode.heading(5)
-                                .addContent(AdfNode.text("Components")));
+                            modelDoc.h5("Components");
                             
                             for (Component component : container.getComponents()) {
                                 addElementDocumentation(modelDoc, component);
@@ -246,55 +214,39 @@ public class ConfluenceExporter {
             }
         }
         
-        confluenceClient.createOrUpdatePage("Model Documentation", modelDoc, parentPageId);
+        confluenceClient.createOrUpdatePage("Model Documentation", convertDocumentToJson(modelDoc), parentPageId);
         logger.info("Created/updated model documentation page");
     }
     
-    private void addElementDocumentation(AdfDocument doc, Element element) {
-        doc.addContent(AdfNode.heading(3)
-            .addContent(AdfNode.text(element.getName())));
+    private void addElementDocumentation(Document doc, Element element) {
+        doc.h3(element.getName());
         
         if (element.getDescription() != null && !element.getDescription().trim().isEmpty()) {
-            doc.addContent(AdfNode.paragraph()
-                .addContent(AdfNode.text(element.getDescription())));
+            doc.paragraph(element.getDescription());
         }
         
         // Add element properties
-        AdfNode propertiesList = AdfNode.bulletList();
-        
-        propertiesList.addContent(AdfNode.listItem()
-            .addContent(AdfNode.paragraph()
-                .addContent(AdfNode.text("ID: "))
-                .addContent(AdfNode.text(element.getId()).addMark(com.structurizr.confluence.adf.AdfMark.code()))));
-        
-        if (element instanceof SoftwareSystem) {
-            SoftwareSystem system = (SoftwareSystem) element;
-            propertiesList.addContent(AdfNode.listItem()
-                .addContent(AdfNode.paragraph()
-                    .addContent(AdfNode.text("Location: "))
-                    .addContent(AdfNode.text(system.getLocation().toString()))));
-        }
-        
-        if (element instanceof Container) {
-            Container container = (Container) element;
-            if (container.getTechnology() != null && !container.getTechnology().trim().isEmpty()) {
-                propertiesList.addContent(AdfNode.listItem()
-                    .addContent(AdfNode.paragraph()
-                        .addContent(AdfNode.text("Technology: "))
-                        .addContent(AdfNode.text(container.getTechnology()))));
+        doc.bulletList(list -> {
+            list.item("ID: " + element.getId());
+            
+            if (element instanceof SoftwareSystem) {
+                SoftwareSystem system = (SoftwareSystem) element;
+                list.item("Location: " + system.getLocation().toString());
             }
-        }
-        
-        if (element instanceof Component) {
-            Component component = (Component) element;
-            if (component.getTechnology() != null && !component.getTechnology().trim().isEmpty()) {
-                propertiesList.addContent(AdfNode.listItem()
-                    .addContent(AdfNode.paragraph()
-                        .addContent(AdfNode.text("Technology: "))
-                        .addContent(AdfNode.text(component.getTechnology()))));
+            
+            if (element instanceof Container) {
+                Container container = (Container) element;
+                if (container.getTechnology() != null && !container.getTechnology().trim().isEmpty()) {
+                    list.item("Technology: " + container.getTechnology());
+                }
             }
-        }
-        
-        doc.addContent(propertiesList);
+            
+            if (element instanceof Component) {
+                Component component = (Component) element;
+                if (component.getTechnology() != null && !component.getTechnology().trim().isEmpty()) {
+                    list.item("Technology: " + component.getTechnology());
+                }
+            }
+        });
     }
 }

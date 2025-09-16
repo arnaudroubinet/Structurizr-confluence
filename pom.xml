@@ -34,6 +34,13 @@
             <version>${structurizr.version}</version>
         </dependency>
 
+        <!-- ADF Builder -->
+        <dependency>
+            <groupId>com.atlassian.stride</groupId>
+            <artifactId>adf-builder</artifactId>
+            <version>3.0.3</version>
+        </dependency>
+
         <!-- Jackson for JSON processing -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
