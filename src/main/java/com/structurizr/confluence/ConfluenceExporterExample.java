@@ -9,7 +9,8 @@ import com.structurizr.view.SystemContextView;
 import com.structurizr.view.ViewSet;
 
 /**
- * Example usage of the ConfluenceExporter.
+ * Example usage of the ConfluenceExporter with a manually created workspace.
+ * For loading from Structurizr on-premise instances, see StructurizrOnPremiseExample.
  */
 public class ConfluenceExporterExample {
     

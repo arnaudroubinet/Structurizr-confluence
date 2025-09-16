@@ -1,11 +1,13 @@
 # Structurizr Confluence Exporter
 
-A Java library that exports [Structurizr](https://structurizr.com/) workspace documentation to Confluence Cloud in Atlassian Document Format (ADF).
+A Java library that exports [Structurizr](https://structurizr.com/) workspace documentation and ADRs to Confluence Cloud in Atlassian Document Format (ADF). Can load workspaces from Structurizr on-premise instances or work with provided workspace objects.
 
 ## Features
 
 - Exports Structurizr workspace documentation to Confluence Cloud
-- Generates documentation in Atlassian Document Format (ADF)
+- **Exports Architecture Decision Records (ADRs)** from Structurizr workspaces
+- **Loads workspaces from Structurizr on-premise instances** using the official Structurizr client
+- Generates documentation in Atlassian Document Format (ADF) using official library
 - Creates structured pages with table of contents
 - Supports all Structurizr model elements (People, Software Systems, Containers, Components)
 - Supports all Structurizr view types (System Landscape, System Context, Container, Component, Deployment)
@@ -16,6 +18,7 @@ A Java library that exports [Structurizr](https://structurizr.com/) workspace do
 - Java 11 or higher
 - Confluence Cloud instance
 - Confluence API token
+- (Optional) Structurizr on-premise instance with API access
 
 ## Installation
 
@@ -60,6 +63,39 @@ try {
 }
 ```
 
+### Loading from Structurizr On-Premise
+
+```java
+import com.structurizr.confluence.ConfluenceExporter;
+import com.structurizr.confluence.client.ConfluenceConfig;
+import com.structurizr.confluence.client.StructurizrConfig;
+
+// Configure Structurizr on-premise connection
+StructurizrConfig structurizrConfig = new StructurizrConfig(
+    "https://your-structurizr-instance.com",  // On-premise Structurizr URL
+    "your-api-key",                           // Your API key
+    "your-api-secret",                        // Your API secret
+    12345L                                    // Workspace ID to load
+);
+
+// Configure Confluence connection
+ConfluenceConfig confluenceConfig = new ConfluenceConfig(
+    "https://your-domain.atlassian.net",     // Confluence base URL
+    "your-email@example.com",                // Your email
+    "your-api-token",                        // Your API token
+    "SPACE"                                  // Space key
+);
+
+// Export workspace (including documentation and ADRs) from Structurizr to Confluence
+ConfluenceExporter exporter = new ConfluenceExporter(confluenceConfig, structurizrConfig);
+try {
+    exporter.exportFromStructurizr();
+    System.out.println("Workspace and ADRs exported successfully!");
+} catch (Exception e) {
+    System.err.println("Export failed: " + e.getMessage());
+}
+```
+
 ### Getting Confluence API Token
 
 1. Go to your Atlassian account settings
@@ -78,7 +114,11 @@ The exporter creates the following page structure in Confluence:
 ├── 📄 Container Views
 ├── 📄 Component Views
 ├── 📄 Deployment Views
-└── 📄 Model Documentation
+├── 📄 Model Documentation
+└── 📄 Architecture Decision Records (if ADRs exist)
+    ├── 📄 ADR 001 - [Decision Title]
+    ├── 📄 ADR 002 - [Decision Title]
+    └── 📄 ...
 ```
 
 Each page contains:
@@ -86,6 +126,7 @@ Each page contains:
 - Table of contents
 - View descriptions and metadata
 - Model element documentation with properties
+- **ADR pages with decision metadata and links** (when available)
 
 ## ADF (Atlassian Document Format)
 

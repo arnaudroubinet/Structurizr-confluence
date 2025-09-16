@@ -3,8 +3,12 @@ package com.structurizr.confluence;
 import com.atlassian.adf.Document;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.structurizr.Workspace;
+import com.structurizr.api.StructurizrClientException;
 import com.structurizr.confluence.client.ConfluenceClient;
 import com.structurizr.confluence.client.ConfluenceConfig;
+import com.structurizr.confluence.client.StructurizrConfig;
+import com.structurizr.confluence.client.StructurizrWorkspaceLoader;
+import com.structurizr.documentation.Decision;
 import com.structurizr.model.*;
 import com.structurizr.view.*;
 import org.slf4j.Logger;
@@ -14,7 +18,8 @@ import java.io.IOException;
 import java.util.Collection;
 
 /**
- * Exports Structurizr workspace documentation to Confluence Cloud in Atlassian Document Format (ADF).
+ * Exports Structurizr workspace documentation and ADRs to Confluence Cloud in Atlassian Document Format (ADF).
+ * Can load workspaces from Structurizr on-premise instances or work with provided workspace objects.
  */
 public class ConfluenceExporter {
     
@@ -22,10 +27,38 @@ public class ConfluenceExporter {
     
     private final ConfluenceClient confluenceClient;
     private final ObjectMapper objectMapper;
+    private final StructurizrWorkspaceLoader workspaceLoader;
     
-    public ConfluenceExporter(ConfluenceConfig config) {
-        this.confluenceClient = new ConfluenceClient(config);
+    /**
+     * Creates an exporter that loads workspaces from a Structurizr on-premise instance.
+     */
+    public ConfluenceExporter(ConfluenceConfig confluenceConfig, StructurizrConfig structurizrConfig) throws StructurizrClientException {
+        this.confluenceClient = new ConfluenceClient(confluenceConfig);
         this.objectMapper = new ObjectMapper();
+        this.workspaceLoader = new StructurizrWorkspaceLoader(structurizrConfig);
+    }
+    
+    /**
+     * Creates an exporter for use with provided workspace objects (original behavior).
+     */
+    public ConfluenceExporter(ConfluenceConfig confluenceConfig) {
+        this.confluenceClient = new ConfluenceClient(confluenceConfig);
+        this.objectMapper = new ObjectMapper();
+        this.workspaceLoader = null;
+    }
+    
+    /**
+     * Exports a workspace loaded from the configured Structurizr instance.
+     * 
+     * @throws Exception if export fails
+     */
+    public void exportFromStructurizr() throws Exception {
+        if (workspaceLoader == null) {
+            throw new IllegalStateException("No Structurizr configuration provided. Use the constructor with StructurizrConfig or call export(Workspace) directly.");
+        }
+        
+        Workspace workspace = workspaceLoader.loadWorkspace();
+        export(workspace);
     }
     
     /**
@@ -51,6 +84,9 @@ public class ConfluenceExporter {
         
         // Generate model documentation
         exportModel(workspace, mainPageId);
+        
+        // Generate ADRs (Architecture Decision Records)
+        exportDecisions(workspace, mainPageId);
         
         logger.info("Workspace export completed successfully");
     }
@@ -94,9 +130,21 @@ public class ConfluenceExporter {
                 }
                 
                 tocList.item("Model Documentation");
+                
+                // Add ADRs to table of contents if they exist
+                if (workspace.getDocumentation() != null && !workspace.getDocumentation().getDecisions().isEmpty()) {
+                    tocList.item("Architecture Decision Records");
+                }
             });
         } else {
-            doc.bulletList(tocList -> tocList.item("Model Documentation"));
+            doc.bulletList(tocList -> {
+                tocList.item("Model Documentation");
+                
+                // Add ADRs to table of contents if they exist
+                if (workspace.getDocumentation() != null && !workspace.getDocumentation().getDecisions().isEmpty()) {
+                    tocList.item("Architecture Decision Records");
+                }
+            });
         }
         
         // Views Overview
@@ -248,5 +296,79 @@ public class ConfluenceExporter {
                 }
             }
         });
+    }
+    
+    private void exportDecisions(Workspace workspace, String parentPageId) throws Exception {
+        if (workspace.getDocumentation() == null || workspace.getDocumentation().getDecisions().isEmpty()) {
+            logger.info("No architecture decision records found in workspace");
+            return;
+        }
+        
+        Collection<Decision> decisions = workspace.getDocumentation().getDecisions();
+        logger.info("Exporting {} architecture decision records", decisions.size());
+        
+        // Create main ADR page
+        Document adrMainDoc = Document.create()
+            .h1("Architecture Decision Records (ADRs)")
+            .paragraph("This page contains all architecture decision records for this project.");
+        
+        // Add table of contents for ADRs
+        adrMainDoc.h2("Decision Records");
+        adrMainDoc.bulletList(list -> {
+            for (Decision decision : decisions) {
+                String itemText = decision.getId() + ": " + decision.getTitle();
+                if (decision.getStatus() != null && !decision.getStatus().trim().isEmpty()) {
+                    itemText += " (" + decision.getStatus() + ")";
+                }
+                list.item(itemText);
+            }
+        });
+        
+        String adrMainPageId = confluenceClient.createOrUpdatePage(
+            "Architecture Decision Records", 
+            convertDocumentToJson(adrMainDoc), 
+            parentPageId
+        );
+        logger.info("Created/updated main ADR page with ID: {}", adrMainPageId);
+        
+        // Create individual ADR pages
+        for (Decision decision : decisions) {
+            exportDecision(decision, adrMainPageId);
+        }
+    }
+    
+    private void exportDecision(Decision decision, String parentPageId) throws Exception {
+        Document decisionDoc = Document.create()
+            .h1("ADR " + decision.getId() + ": " + decision.getTitle());
+        
+        // Add decision metadata
+        decisionDoc.h2("Decision Information");
+        decisionDoc.bulletList(list -> {
+            list.item("ID: " + decision.getId());
+            list.item("Title: " + decision.getTitle());
+            
+            if (decision.getStatus() != null && !decision.getStatus().trim().isEmpty()) {
+                list.item("Status: " + decision.getStatus());
+            }
+            
+            if (decision.getDate() != null) {
+                list.item("Date: " + decision.getDate().toString());
+            }
+        });
+        
+        // Add links to other decisions
+        if (!decision.getLinks().isEmpty()) {
+            decisionDoc.h2("Related Decisions");
+            decisionDoc.bulletList(list -> {
+                decision.getLinks().forEach(link -> {
+                    String linkText = link.getDescription() + " (ID: " + link.getId() + ")";
+                    list.item(linkText);
+                });
+            });
+        }
+        
+        String pageTitle = "ADR " + decision.getId() + " - " + decision.getTitle();
+        confluenceClient.createOrUpdatePage(pageTitle, convertDocumentToJson(decisionDoc), parentPageId);
+        logger.info("Created/updated ADR page: {}", pageTitle);
     }
 }
