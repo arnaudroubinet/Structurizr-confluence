@@ -1,0 +1,65 @@
+== Introduction and Goals
+
+This architecture document follows the https://arc42.org/overview[arc42] template and describes the ITMS (Instant Ticket Manager System) and the platforms with which it interacts. The `itms-workspace.dsl` (Structurizr DSL) is the source of truth for actors, external systems, containers and relationships. This document synchronises prose with that model.
+
+=== Vision
+
+ITMS enables secure, auditable and resilient management of instant ticket lifecycle operations (validation, locking/unlocking, updates, limit adjustments) across terminal and operator channels while integrating with identity providers, external retail platform, data & audit infrastructures.
+
+=== Stakeholders & Expectations
+
+[cols="e,4e,4e" options="header"]
+|===
+|Stakeholder |Role / Interest |Key Expectations
+|Terminal User ("Terminal") |Physical or embedded ticket terminal actor accessing ticket services |Low-latency operations, robustness against connectivity issues, clear failure semantics.
+|Operator |Human or automated operator managing configuration, limits, oversight |Strong authentication, traceability, consistent administrative model, zero-trust boundaries.
+|Platform Operations |Operate & monitor ITMS runtime |Predictable scaling, health/metrics endpoints, safe deploy/rollback, minimal blast radius.
+|Security & Compliance |Ensure regulatory & contractual conformity |Immutable audit trail, least privilege, segregated data flows, external identity delegation.
+|External Systems Owners |S3, Data platform, Audit store, Retail system, iDecide, Okta, Postgresql |Stable contracts, backward compatible changes, explicit egress policies.
+|Architecture & Engineering |Evolve system sustainably |Clear container responsibilities, isolation patterns, event-driven integration, change impact clarity.
+|===
+
+=== Goals (Top-Level)
+
+1. Integrity of ticket state and financial-impacting operations.
+2. High availability for terminal and operator critical flows.
+3. Resilience & graceful degradation when external dependencies fail.
+4. Observability: actionable metrics, tracing context propagation, minimal P99 latency regression.
+5. Security: strong authentication (Okta / Keycloak), explicit ingress/egress enforcement, auditability.
+
+=== Primary Quality Goals
+
+[cols="e,5e,5e" options="header"]
+|===
+|Quality |Rationale |Implications
+|Integrity |Ticket lifecycle and limit adjustments must be provable and tamper‑evident |Use Postgresql as system-of-record; append-only audit streams; Debezium capture.
+|Availability |Continuous terminal & operator service drives business value |Multi‑AZ deployments, anti-affinity, horizontal scaling, health-based routing.
+|Resilience |External systems (S3, audit, data, retail) may degrade |Bulkhead via ingress/egress separation; timeout & retry policies; circuit breaking.
+|Security |Sensitive operations & identities |Delegated OAuth/OIDC (Okta/Keycloak), token validation at ingress, principle of least privilege.
+|Observability |Fast incident triage |Structured access logs (no payload), OpenTelemetry headers injection, Kafka event tracing IDs.
+|Evolvability |Model will grow (new adapters/services) |Container boundary clarity; stable contracts; DSL as canonical model.
+|===
+
+=== Out of Scope (Current Iteration)
+* Detailed game logic – managed by upstream domain engines, not part of ITMS moteur scope.
+* Long-term archival strategy beyond S3 retention policies.
+
+=== Method of Synchronisation
+The Structurizr DSL is versioned with the codebase. Documentation updates MUST derive from the DSL to avoid drift. Diagram embeds (e.g. `image::embed:itms_platform_moteur_context_view[]`) are regenerated automatically by Structurizr tooling.
+
+=== Success Metrics (Illustrative)
+* P99 terminal request latency < 300 ms (steady state, excluding downstream >1s responses).
+* Mean Time To Recover (MTTR) for single container failure < 2 minutes.
+* Zero integrity incidents (divergent ticket states) per quarter.
+* 95% of changes reference updated DSL elements (traceable in review notes).
+
+=== Assumptions
+* Postgresql cluster provides HA via managed infrastructure (outside scope here).
+* Network policies enforce egress only through designated egress containers.
+* Keycloak and Okta are authoritative for identity; ITMS does not store credentials.
+
+=== Constraints Summary
+See section 2 for full list—Kubernetes multi‑AZ, Envoy for ingress, egress whitelisting, external identity providers, event streaming via Kafka.
+
+=== Alignment with Previous Platform Docs
+Legacy references to a broader "ITF" platform are superseded here by the focused ITMS moteur & retail interaction model as represented in the DSL.

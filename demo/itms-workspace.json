@@ -1,0 +1,1047 @@
+{
+  "configuration" : {
+    "scope" : "SoftwareSystem",
+    "users" : [ {
+      "role" : "ReadWrite",
+      "username" : "arnaud"
+    }, {
+      "role" : "ReadOnly",
+      "username" : "guest"
+    } ],
+    "visibility" : "Private"
+  },
+  "description" : "Instant Ticket Manager System and all the platforms with which it interacts.",
+  "documentation" : {
+    "decisions" : [ {
+      "content" : "# 1. Record architecture decisions\n\nDate: 2016-02-12\n\n## Status\n\nAccepted\n\n## Context\n\nWe need to record the architectural decisions made on this project.\n\n## Decision\n\nWe will use Architecture Decision Records, as described by Michael Nygard in this article: http://thinkrelevance.com/blog/2011/11/15/documenting-architecture-decisions\n\n## Consequences\n\nSee Michael Nygard's article, linked above.\n",
+      "date" : "2016-02-12T00:00:00Z",
+      "format" : "Markdown",
+      "id" : "1",
+      "status" : "Accepted",
+      "title" : "Record architecture decisions"
+    } ],
+    "sections" : [ {
+      "content" : "== Introduction and Goals\n\nThis architecture document follows the https://arc42.org/overview[arc42] template and describes the ITMS (Instant Ticket Manager System) and the platforms with which it interacts. The `itms-workspace.dsl` (Structurizr DSL) is the source of truth for actors, external systems, containers and relationships. This document synchronises prose with that model.\n\n=== Vision\n\nITMS enables secure, auditable and resilient management of instant ticket lifecycle operations (validation, locking/unlocking, updates, limit adjustments) across terminal and operator channels while integrating with identity providers, external retail platform, data & audit infrastructures.\n\n=== Stakeholders & Expectations\n\n[cols=\"e,4e,4e\" options=\"header\"]\n|===\n|Stakeholder |Role / Interest |Key Expectations\n|Terminal User (\"Terminal\") |Physical or embedded ticket terminal actor accessing ticket services |Low-latency operations, robustness against connectivity issues, clear failure semantics.\n|Operator |Human or automated operator managing configuration, limits, oversight |Strong authentication, traceability, consistent administrative model, zero-trust boundaries.\n|Platform Operations |Operate & monitor ITMS runtime |Predictable scaling, health/metrics endpoints, safe deploy/rollback, minimal blast radius.\n|Security & Compliance |Ensure regulatory & contractual conformity |Immutable audit trail, least privilege, segregated data flows, external identity delegation.\n|External Systems Owners |S3, Data platform, Audit store, Retail system, iDecide, Okta, Postgresql |Stable contracts, backward compatible changes, explicit egress policies.\n|Architecture & Engineering |Evolve system sustainably |Clear container responsibilities, isolation patterns, event-driven integration, change impact clarity.\n|===\n\n=== Goals (Top-Level)\n\n1. Integrity of ticket state and financial-impacting operations.\n2. High availability for terminal and operator critical flows.\n3. Resilience & graceful degradation when external dependencies fail.\n4. Observability: actionable metrics, tracing context propagation, minimal P99 latency regression.\n5. Security: strong authentication (Okta / Keycloak), explicit ingress/egress enforcement, auditability.\n\n=== Primary Quality Goals\n\n[cols=\"e,5e,5e\" options=\"header\"]\n|===\n|Quality |Rationale |Implications\n|Integrity |Ticket lifecycle and limit adjustments must be provable and tamper‑evident |Use Postgresql as system-of-record; append-only audit streams; Debezium capture.\n|Availability |Continuous terminal & operator service drives business value |Multi‑AZ deployments, anti-affinity, horizontal scaling, health-based routing.\n|Resilience |External systems (S3, audit, data, retail) may degrade |Bulkhead via ingress/egress separation; timeout & retry policies; circuit breaking.\n|Security |Sensitive operations & identities |Delegated OAuth/OIDC (Okta/Keycloak), token validation at ingress, principle of least privilege.\n|Observability |Fast incident triage |Structured access logs (no payload), OpenTelemetry headers injection, Kafka event tracing IDs.\n|Evolvability |Model will grow (new adapters/services) |Container boundary clarity; stable contracts; DSL as canonical model.\n|===\n\n=== Out of Scope (Current Iteration)\n* Detailed game logic – managed by upstream domain engines, not part of ITMS moteur scope.\n* Long-term archival strategy beyond S3 retention policies.\n\n=== Method of Synchronisation\nThe Structurizr DSL is versioned with the codebase. Documentation updates MUST derive from the DSL to avoid drift. Diagram embeds (e.g. `image::embed:itms_platform_moteur_context_view[]`) are regenerated automatically by Structurizr tooling.\n\n=== Success Metrics (Illustrative)\n* P99 terminal request latency < 300 ms (steady state, excluding downstream >1s responses).\n* Mean Time To Recover (MTTR) for single container failure < 2 minutes.\n* Zero integrity incidents (divergent ticket states) per quarter.\n* 95% of changes reference updated DSL elements (traceable in review notes).\n\n=== Assumptions\n* Postgresql cluster provides HA via managed infrastructure (outside scope here).\n* Network policies enforce egress only through designated egress containers.\n* Keycloak and Okta are authoritative for identity; ITMS does not store credentials.\n\n=== Constraints Summary\nSee section 2 for full list—Kubernetes multi‑AZ, Envoy for ingress, egress whitelisting, external identity providers, event streaming via Kafka.\n\n=== Alignment with Previous Platform Docs\nLegacy references to a broader \"ITF\" platform are superseded here by the focused ITMS moteur & retail interaction model as represented in the DSL.\n",
+      "filename" : "01_introduction_and_goals.adoc",
+      "format" : "AsciiDoc",
+      "order" : 1,
+      "title" : ""
+    }, {
+      "content" : "ifndef::imagesdir[:imagesdir: ../images]\n\n[[section-architecture-constraints]]\n== Architecture Constraints\n\nThe following constraints are authoritative and stem from enterprise directives, regulatory context or foundational decisions already materialised in the Structurizr DSL model.\n\n[cols=\"e,e,7e,2e\" options=\"header\"]\n|===\n|Type |Area |Constraint |Rationale\n|Technical |Execution |Must run on Kubernetes (multi‑AZ) |Standard orchestration & resilience model.\n|Technical |Ingress |Envoy-based ingress containers (ingress_terminal, ingress_operator, ingress_iDecide) |Unified auth, TLS termination, telemetry headers.\n|Technical |Egress |All external calls traverse explicit egress containers (egress_* set) |Network policy enforcement & audit clarity.\n|Technical |Data Capture |Debezium mandated for Postgresql change streaming |Downstream audit, replication, event sourcing projections.\n|Technical |Identity |Okta + Keycloak only supported IDPs |Centralised authentication & m2m token validation.\n|Technical |Protocol |HTTPS for application flows, TCP/TLS for replication paths |Encryption in transit & consistency with existing infra.\n|Organisational |Documentation |Structurizr DSL is single source of truth for architecture views |Prevents drift; automated diagram regeneration.\n|Organisational |Observability |Access logs exclude payload; OpenTelemetry headers required |Privacy, performance triage.\n|Regulatory |Audit |Immutable audit stream via Kafka -> Audit store |Regulatory traceability & dispute resolution.\n|Regulatory |Data Sovereignty |S3-compatible storage in approved regions only |Compliance with jurisdictional storage rules.\n|Quality |Availability |Critical containers: replicas >= number of AZ (≥3) |Meets uptime and failover targets.\n|Quality |Deployment |Graceful shutdown hooks (preStop + terminationGracePeriodSeconds ≥ max request timeout) |Integrity of in‑flight operations.\n|Security |Least Privilege |No direct external system calls from business containers (only through egress) |Blast radius reduction.\n|Security |Token Validation |All inbound tokens validated at ingress; internal trust boundary inside platform moteur |Consistent auth enforcement.\n|===\n\n=== Non-Negotiable Decisions\n* Separation of ingress and egress containers is structural; not to be bypassed for expediency.\n* Adding a new external dependency requires: DSL update + threat assessment + egress definition.\n\n=== Review & Change Process\nConstraint changes require architecture review; accepted modifications must update:\n1. DSL (`itms-workspace.dsl`)\n2. This section\n3. Associated automated policies (e.g., Helm values or network policy manifests) – tracked elsewhere.\n\n",
+      "filename" : "02_architecture_constraints.adoc",
+      "format" : "AsciiDoc",
+      "order" : 2,
+      "title" : ""
+    }, {
+      "content" : "\n[[section-system-scope-and-context]]\n== System Scope and Context\n\nThe scope covers the ITMS *moteur* platform and its interactions with *terminal* and *operator* actors plus external enterprise systems (Data platform, Audit store, identity providers Okta & Keycloak, Retail platform, iDecide decisioning, S3 storage, Postgresql database). The `itms-workspace.dsl` defines all elements below and is treated as canonical. No architectural element may be introduced in prose without first being added to the DSL.\n\n=== Business Context\n\nimage::embed:itms_platform_moteur_context_view[]\n\n[cols=\"e,3e,6e\" options=\"header\"]\n|===\n|Element |Type |Purpose / Interaction Summary\n|Terminal |Actor (Person) |Consumes ticket / limits services via `ingress_terminal`; initiates gain retrieval flows.\n|Operator |Actor (Person) |Uses administrative & operational functions via `ingress_operator` (UI: BackOffice).\n|Instant Ticket Manager System (Retail) |External Software System |Receives limit updates propagated from moteur side via egress_terminal / egress_operator.\n|S3 |External Software System |Holds game configuration artifacts (read via `egress_s3`).\n|Data platform |External Software System |Receives replicated data streams (`egress_data`).\n|Audit store |External Software System |Receives audit replication stream (`egress_audit`).\n|Postgresql |External Software System |Primary persistent store for moteur domain data (access via `egress_postgreqsl`).\n|iDecide |External Software System |Decisioning/auth/validation for certain terminal flows via `ingress_iDecide`.\n|Okta |External Software System |Operator identity provider; token validation path through `egress_okta`.\n|Keycloak |Container (internal IDP) |Handles authentication flows for iDecide/terminal cases.\n|Kafka + Kafka Connect |Container |Event streaming backbone + connectors (via Debezium → change events, replication flows).\n|Debezium |Container |Change Data Capture from Postgresql, forwards to Kafka.\n|BackOffice |Container |Operator UI / admin interface.\n|Ingress / Egress Containers |Containers (Envoy/Egress) |Security & network boundary enforcement, token validation, telemetry header propagation.\n|IMS / TTP (operator & terminal) |Containers |Domain-specific processing units for operator & terminal contexts (ticket handling, gains, actions).\n|RTL Adapters (operator & terminal) |Containers |Limit update propagation path to retail system.\n|===\n\n=== Context Responsibilities\n* ITMS moteur orchestrates ticket operations, state persistence, limit management and event replication.\n* External systems remain authoritative for: identity (Okta/Keycloak), configuration artifacts (S3), downstream analytics (Data platform), audit integrity (Audit store), retail limit application (Retail platform).\n* Change Data Capture uses Debezium side‑car pushing into Kafka which fans out to audit, data, and internal consumers.\n\n=== Technical Context & Interfaces\n\n[cols=\"e,e,2e,6e,3e\" options=\"header\"]\n|===\n|Source |Target |Protocol |Purpose |Security/Notes\n|Terminal |ingress_terminal |HTTPS |Ticket operations, status queries |Token validation at ingress.\n|Operator |ingress_operator |HTTPS |Administrative actions, configuration |OIDC via Okta.\n|iDecide |ingress_iDecide |HTTPS |Decision/auth requests inbound |Envoy terminates TLS.\n|ingress_iDecide |ttp_terminal |HTTPS |Validate/lock/paid flows |Propagated auth context.\n|ingress_terminal |ims_terminal |HTTPS |Forward terminal actions |Isolation boundary.\n|ingress_terminal |ttp_terminal |HTTPS |Gain retrieval / ticket ops |Selective routing.\n|ingress_operator |ims_operator |HTTPS |Operator domain actions |Role-based filtering.\n|ingress_operator |ttp_operator |HTTPS |Operator TTP actions |Same ingress policy set.\n|ims_* / ttp_* |egress_postgreqsl |HTTPS |Persistence operations |No direct DB bypass (enforces egress boundary).\n|debezium |egress_postgreqsl |TCP/TLS |CDC replication |Logical decoding slot.\n|egress_postgreqsl |database |TCP/TLS |DB cluster access |Encrypted channel.\n|debezium |kafka |HTTPS |Push change events |Authenticated connector.\n|kafka |egress_audit |TCP/TLS |Audit replication |Filtered topics.\n|egress_audit |audit_store |TCP/TLS |Audit ingestion |Append-only.\n|kafka |egress_data |TCP/TLS |Data replication |Schema-regulated topics.\n|egress_data |data |TCP/TLS |Analytics ingestion |Batch/stream.\n|ims_operator / ttp_operator |egress_s3 |HTTPS |Read game configuration |Signed requests.\n|egress_s3 |s3 |HTTPS |Fetch artifacts |Immutable objects.\n|rtl_adapter_* |egress_terminal / egress_operator |HTTPS |Limit update propagation |Rate-limited.\n|egress_* |itms_platform_retail |HTTPS |Limit update delivery |Idempotent.\n|operator |okta |HTTPS |Authentication |OIDC flow.\n|ims_operator / ttp_operator |egress_okta |HTTPS |Token validation |Introspection / JWKS.\n|egress_okta |okta |HTTPS |Key / token validation |Cached keys.\n|ttp_terminal |keycloak |HTTPS |Token validation (iDecide flows) |Local realm.\n|ingress_iDecide |keycloak |HTTPS |Authentication |mTLS possible.\n|===\n\n=== Boundaries\n* Trust boundary enforced at ingress containers; internal service-to-service calls assume validated identity claims.\n* Outbound boundary enforced at egress layer; only declared destinations reachable.\n* Data boundary: direct database access impossible from IMS/TTP containers; all SQL traverses `egress_postgreqsl` component for observability & policy.\n\n=== Open Points\n* Rate limiting strategy per actor not yet modelled in DSL (future extension).\n* Multi-region replication strategy for Postgresql outside current scope.\n* Formal SLA definitions for iDecide interaction and limit propagation still pending.\n",
+      "filename" : "03_system_scope_and_context.adoc",
+      "format" : "AsciiDoc",
+      "order" : 3,
+      "title" : ""
+    }, {
+      "content" : "ifndef::imagesdir[:imagesdir: ../images]\n\n[[section-solution-strategy]]\n== Solution Strategy\n\nThis section summarises the main architectural tactics applied in ITMS (moteur) as represented in the Structurizr DSL. The strategy pivots away from historical \"macro service\" consolidation towards *explicitly bounded containers* that isolate ingress, business processing, persistence mediation and outbound connectivity.\n\n=== Drivers\n* Integrity & auditability of ticket lifecycle operations\n* Resilience to partial downstream failures (retail, data, audit, identity)\n* Evolvability with DSL-governed model ensuring traceable structural changes\n* Observability & zero-trust networking (ingress/egress enforcement)\n\n=== Key Architectural Tactics\n[cols=\"e,3e,6e\" options=\"header\"]\n|===\n|Tactic |Implementation |Benefit\n|Ingress/Egress Segregation |Dedicated Envoy ingress containers (`ingress_*`) and egress mediators (`egress_*`) |Consistent auth, telemetry injection, enforceable network policies, simplified threat model.\n|Change Data Capture |`debezium` container streaming Postgresql changes to `kafka` |Immutable event trail, downstream replication (audit, data) without DB coupling.\n|Limit Propagation Path |Domain containers (`ims_*`, `ttp_*`) → `rtl_adapter_*` → egress retail |Decouples business logic from external retail contract, supports retries & buffering.\n|Configuration Access |Strict S3 reads via `egress_s3` |Centralised artifact retrieval + auditable access.\n|Token Validation Delegation |Okta & Keycloak via ingress + `egress_okta` |Reduces credential surface, leverages external IDP lifecycle.\n|Observability |Access logs (no payload), OpenTelemetry headers inserted at ingress |Correlatable traces with minimized sensitive data exposure.\n|Canonical Model Governance |Structurizr DSL committed w/ code, docs sync pipeline |Prevents drift; change review anchored on visual + textual diffs.\n|Isolation of Persistence |All SQL through `egress_postgreqsl` |Policy enforcement (timeouts, circuit breaking) & consistent metrics.\n|Event-Driven Extension |Kafka + connectors |Future consumers (analytics, ML) attach sans core changes.\n|===\n\n=== Decision Highlights\n*Prefer *composition over shared monolith*: additional business capabilities materialise as new containers or adapters instead of expanding a macro service.\n*Security boundaries first*: ingress & egress are *structural*; bypass is an architectural violation.\n*Database neutrality for consumers*: external systems never get direct R/W access; they consume streams (Kafka) or curated APIs.\n\n=== Alternatives Considered\n|Alternative |Reason Rejected\n|Monolithic macro service revival |Fails resilience & blast-radius goals; slows independent scaling.\n|Direct DB access for audit/data |Couples consumers to schema; complicates evolution & compliance.\n|Inline outbound calls from business containers |Expands attack surface; harder policy enforcement.\n\n=== Quality Alignment\n*Availability*: Horizontal scaling at container granularity; anti-affinity policies (see Deployment View).\n*Integrity*: CDC + immutable event streams allow reconciliation; no hidden state transitions.\n*Performance*: Reduced hop layering (ingress → domain → egress) with clear timeout budgets.\n*Evolvability*: DSL-first changes, container-level versioning possible.\n\n=== Roadmap Considerations (Forward Looking)\n* Introduce rate limiting & quota per actor at ingress (pending DSL extension)\n* Blue/green or canary deployment strategy encoded at ingress layer\n* Multi-region replication once HA posture validated in single region\n\n",
+      "filename" : "04_solution_strategy.adoc",
+      "format" : "AsciiDoc",
+      "order" : 4,
+      "title" : ""
+    }, {
+      "content" : "[[section-building-block-view]]\n\n== Building Block View\n\nThis section describes the static decomposition of the *ITMS moteur* platform aligned with the DSL container view (`01_itms_platform_moteur_all_view`). Legacy ITF/ITG/MTR/MTP descriptions have been removed to avoid scope confusion.\n\n=== Level 1 – System Context\n\nimage::embed:itms_platform_moteur_context_view[]\n\nRefer to System Scope & Context (Section 3) for the tabular mapping of external systems and actors.\n\n=== Level 2 – Container Overview\n\nimage::embed:01_itms_platform_moteur_all_view[]\n\n[cols=\"e,2e,4e,3e\" options=\"header\"]\n|===\n|Container |Role |Key Responsibilities |Notes / Tech\n|Ingress terminal |Inbound edge (terminal) |TLS termination, token validation, telemetry headers |Envoy\n|Ingress operator |Inbound edge (operator) |OIDC enforcement (Okta), routing to operator domain services |Envoy\n|Ingress iDecide |Inbound decisioning |Mediates iDecide flows and forwards to TTP terminal |Envoy\n|IMS terminal |Business logic (terminal) |Ticket operations, state transitions, limit update triggers |Internal service\n|TTP terminal |Terminal processing |Gain retrieval, validation w/ iDecide, persistence |Internal service\n|IMS operator |Business logic (operator) |Administrative operations, configuration, limit adjustments |Internal service\n|TTP operator |Operator processing |Operator-side transactional operations |Internal service\n|RTL adapter terminal |Retail propagation |Transforms limit updates for retail (terminal path) |Adapter\n|RTL adapter operator |Retail propagation |Transforms limit updates for retail (operator path) |Adapter\n|Egress terminal |Outbound boundary (retail terminal path) |Authorised calls towards Retail platform |Egress (policy)\n|Egress operator |Outbound boundary (retail operator path) |Authorised calls towards Retail platform |Egress (policy)\n|Egress postgresql |Outbound boundary (database) |Controlled DB access, metrics, circuit breaking |Egress (policy)\n|Egress S3 |Outbound boundary (storage) |Game configuration fetch |Egress\n|Egress data |Outbound boundary (analytics) |Data replication stream |Egress\n|Egress audit store |Outbound boundary (audit) |Audit replication stream |Egress\n|Egress okta |Outbound boundary (identity) |Token introspection / JWKS refresh |Egress\n|Debezium |CDC side-car |Streaming DB changes into Kafka |CDC engine\n|Kafka + Kafka Connect |Event backbone |Distribute CDC, audit, analytics events |Kafka cluster\n|BackOffice |Operator UI |User interface served to operators |Web app\n|Keycloak |Internal IDP |Auth for specific terminal/iDecide scenarios |OIDC provider\n|===\n\n=== Component Responsibility Clusters\nIngress Layer:: Normalises identity, injects tracing context, enforces protocol & rate (future), isolates business services from raw edge traffic.\nDomain Services (IMS/TTP):: Implement core stateful workflows for both operator & terminal channels; emit events and persist via controlled egress.\nAdapters (Retail / CDC):: Bridge internal domain events to external contract formats or transport (retail APIs, Kafka topics).\nEgress Layer:: Provides *structural* choke points for policy (timeouts, retries), security (least privilege) and observability.\nSupporting Infrastructure:: Identity (Keycloak), UI (BackOffice), Event backbone (Kafka), Change capture (Debezium).\n\n=== Directory / Ownership (Illustratif)\n[cols=\"e,2e,3e\"]\n|===\n|Cluster |Primary Owner |Escalation\n|Ingress |Platform Networking |Security Architecture\n|Domain (IMS/TTP) |Core Engineering |Product Owner ITMS\n|Egress |Platform Networking |Security Architecture\n|CDC & Kafka |Data Engineering |Platform SRE\n|Adapters Retail |Core Engineering |Retail Integration Lead\n|Identity (Keycloak) |Security Platform |IAM Team\n|BackOffice |Operator Experience |UX Lead\n|===\n\n=== Rationale for Segmentation\n*Minimise blast radius* – scaling or failure in operator path does not degrade terminal path due to container isolation.\n*Policy consolidation* – auth & egress rules live in a small, reviewable set of containers.\n*Event-driven extension* – Debezium + Kafka allow adding consumers with no change to persistence layer.\n\n=== Evolution Guidelines\n* New external dependency → add dedicated `egress_*` container + DSL update.\n* New business capability → prefer new domain container if bounded context distinct.\n* Shared logic extraction → library; avoid creating a “god” shared service.\n\n=== Open Issues\n* Formal component SLIs (error budget per container) pending.\n* Automated drift detection between DSL & deployment manifests (future tooling).\n\nThe ITG component, supplied by FDJ, is the main game engine of the ITF platform and allows players to play digital versions of scratch tickets also call eInstant games.\n\nIt's a java application based on the falcon framework and deployed in a tomcat container.\n\n\n==== ITG - Player\n\nITG player handle all the requestes comming from the ITF player instance and his never exposed directly. +\nIt perform the wagers after validating them and asking the debit counterpart to the player lottery PAM through the ITF lottery instance. +\nOf cours it also notify the winning (or loosing) amount after the ticket is claim.\n\nimage::embed:itg_player_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Internal only\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/rest/health/readiness +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/rest/health/liveness +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\nitg_player_network_flux\n\n\n==== ITG - Admin\n\nITG admin handle all the requestes comming from human operator, or by the ITF admin instance. +\nIt manage the game engine configuration and manage all asynchrones jobs like autoclaim.\n\nimage::embed:itg_admin_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Admin services are exposed through the admin gateway\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/rest/health/readiness +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/rest/health/liveness +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\nitg_admin_network_flux\n\n==== ITG - Database\n\nITG have two database.\n\nThe OLTP database is the working instance and the only database whose data is accessible to users.\n\nThe HISTO base is the semi-cold storage instance. Its data is accessible only to operators.\n\nCold data are then stored in S3 for the long term.\n\nimage::embed:02_07_itg_database_link[]\n\n==== ITG data historisation\n\nOLTP data are move from OLTP to HISTO database using sql scripts managed by a kubernetes cron.\nData are moved to a temporary table, extracte has csv and copy into the histo database.\nData are removed from OLTP only after the acknoledge of the copy into HISTO database.\n\nimage::embed:itg_histo_scripts_network_relationship[]\n\n==== ITG data purge\n\nHISTO data are move from HISTO to S3 storage using sql scripts managed by a kubernetes cron.\nData are moved to a temporary table, extracte has csv and copy into S3.\nData are removed from HISTO only after the acknoledge of the copy into S3 database.\n\nimage::embed:itg_purge_scripts_network_relationship[]\n\n\n=== MTR\n\nThe MTR component, supplied by FDJ, is a game engine of the ITF platform and allows players to play multisteps eInstant games.\nEach step can trigger a random depending on the current context.\n\nIt's a java application based on the falcon framework and deployed in a tomcat container.\n\n\n==== MTR - Player\n\nMTR player handle all the requestes comming from the ITF player instance and his never exposed directly.\nIt perform the wagers after validating them and asking the debit counterpart to the player lottery PAM through the ITF lottery instance.\nOf cours it also notify the winning (or loosing) amount after the ticket is claim.\n\nimage::embed:mtr_player_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Internal only\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/rest/health/readiness +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/rest/health/liveness +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\nmtr_player_network_flux\n\n\n==== MTR - Admin\n\nMTR admin handle all the requestes comming from human operator, or by the ITF admin instance. +\nIt manage the game engine configuration and manage all asynchrones jobs like expiration.\n\nimage::embed:mtr_admin_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint. +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Admin services are exposed through the admin gateway\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/rest/health/readiness +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/rest/health/liveness +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\nmtr_admin_network_flux\n\n\n==== MTR - Database\n\nMTR have two database.\n\nThe OLTP database is the working instance and the only database whose data is accessible to users.\n\nThe HISTO base is the semi-cold storage instance. Its data is accessible only to operators.\n\nCold data are then stored in S3 for the long term.\n\nimage::embed:02_09_mtr_database_link[]\n\n==== MTR data historisation\n\nOLTP data are move from OLTP to HISTO database using sql scripts managed by a kubernetes cron.\nData are moved to a temporary table, extracte has csv and copy into the histo database.\nData are removed from OLTP only after the acknoledge of the copy into HISTO database.\n\nimage::embed:mtr_histo_scripts_network_relationship[]\n\n==== MTR data purge\n\nHISTO data are move from HISTO to S3 storage using sql scripts managed by a kubernetes cron.\nData are moved to a temporary table, extracte has csv and copy into S3.\nData are removed from HISTO only after the acknoledge of the copy into S3 database.\n\nimage::embed:mtr_purge_scripts_network_relationship[]\n\n\n=== MTP\n\nThe MTP component, supplied by FDJ, is a game engine of the ITF platform and allows players to play multiplayer and multisteps eInstant games. +\nEach step can trigger a random depending on the current context. +\nThe context is shared with the other players taking part in the game.\n\nIt's a java application based on the falcon framework and deployed in a tomcat container.\n\n==== MTP - Player\n\nMTP player handle all the requestes comming from the ITF player instance and his never exposed directly. +\nIt perform the wagers after validating them and asking the debit counterpart to the player lottery PAM through the ITF lottery instance. +\nOf cours it also notify the winning (or loosing) amount after the ticket is claim.\n\nPlayer actions are sent through kafka and falcon-push to players client.\n\nimage::embed:mtp_player_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|Nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint. +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Internal only\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/rest/health/readiness +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/rest/health/liveness +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\nmtr_player_network_flux\n\n\n==== MTP - Admin\n\nMTP admin handle all the requestes comming from human operator, or by the ITF admin instance. +\nIt manage the game engine configuration and manage all asynchrones jobs like transaction reconciliation or game session expiration.\n\nimage::embed:mtp_admin_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|Nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Admin services are exposed through the admin gateway\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/rest/health/readiness +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/rest/health/liveness +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\nmtp_admin_network_flux\n\n==== MTP - PSH\n\nPush consumes kafka events and sends their messages to players who have registered in the “rooms” corresponding to their game. \n\nIt's a nodeJS application.\n\nimage::embed:psh_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|Nb replicas = 1 (This application is statefull)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = 1\n\n|Service type\n|ClusterIP\n\n|Exposition\n|Public through player ingress\n\n|PreStop\n|None\n\n|terminationGracePeriodSeconds\n|None\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/rest/health/readiness +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/rest/health/liveness +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\npsh_network_flux\n\n\n==== MTP - Database\n\nMTP have two database.\n\nThe OLTP database is the working instance and the only database whose data is accessible to users.\n\nThe HISTO base is the semi-cold storage instance. Its data is accessible only to operators.\n\nCold data are then stored in S3 for the long term.\n\nimage::embed:02_10_mtp_database_link[]\n\n==== MTP data historisation\n\nOLTP data are move from OLTP to HISTO database using sql scripts managed by a kubernetes cron.\nData are moved to a temporary table, extracte has csv and copy into the histo database.\nData are removed from OLTP only after the acknoledge of the copy into HISTO database.\n\nimage::embed:mtp_histo_scripts_network_relationship[]\n\n==== MTP data purge\n\nHISTO data are move from HISTO to S3 storage using sql scripts managed by a kubernetes cron.\nData are moved to a temporary table, extracte has csv and copy into S3.\nData are removed from HISTO only after the acknoledge of the copy into S3 database.\n\nimage::embed:mtp_purge_scripts_network_relationship[]\n\n\n=== GAM\n\nThe GAMification component, supplied by FDJ, is an add-on to the MTR game engine and enables players to collect virtual money and use it as an access token for bonus bets.\n\nIt's a java application based on the falcon framework and deployed in a tomcat container.\n\n==== GAM - Player\n\nGAM player handle all the requestes comming from the MTR player instance and his never exposed directly. +\nIt perform allow the game engine to consume access token and also listen to MTR sessions kafka events.\n\nimage::embed:gam_player_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|Nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint. +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Internal only\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/rest/health/readiness +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/rest/health/liveness +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\ngam_player_network_flux\n\n\n==== GAM - Admin\n\nGAM admin handle all the requestes comming from human operator. +\nIt manage the \"univers\" and script configuration and manage all asynchrones jobs like event retry.\n\nimage::embed:gam_admin_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|Nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Admin services are exposed through the admin gateway\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/rest/health/readiness +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/rest/health/liveness +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\ngam_admin_network_flux\n\n\n==== GAM - Database\n\nGAM have two database.\n\nThe OLTP database is the working instance and the only database whose data is accessible to users.\n\nThe HISTO base is the semi-cold storage instance. Its data is accessible only to operators.\n\nCold data are then stored in S3 for the long term.\n\nimage::embed:02_11_gam_database_link[]\n\n==== GAM data historisation\n\nOLTP data are move from OLTP to HISTO database using sql scripts managed by a kubernetes cron.\nData are moved to a temporary table, extracte has csv and copy into the histo database.\nData are removed from OLTP only after the acknoledge of the copy into HISTO database.\n\nimage::embed:gam_histo_scripts_network_relationship[]\n\n==== GAM data purge\n\nHISTO data are move from HISTO to S3 storage using sql scripts managed by a kubernetes cron.\nData are moved to a temporary table, extracte has csv and copy into S3.\nData are removed from HISTO only after the acknoledge of the copy into S3 database.\n\nimage::embed:gam_purge_scripts_network_relationship[]\n\n\n=== Falcon Gateway\n\nThe falcon gateway, supplied by FDJ is a java application allowing external call to use the service discovery legacy.\n\nIt's a java application based on the AKKA framework.\n\n==== GTW - Player\n\nGateway player handle all the requestes comming from the public player endpoint and after validate the endpoint URL and mediatype redirect to an eligible backend.\n\nimage::embed:gtw_player_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|Nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint. +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Internal only\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/api/falcon/health/ready +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/api/falcon/health/alive +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\ngtw_player_network_flux\n\n\n==== GTW - Trusted\n\nGateway trusted handle all the requestes comming from the lottery endpoint.\nCurrently this gateway exposed \n\nimage::embed:gtw_trusted_network_relationship[]\n\n.Kubernetes hosting for production like environnement\n[cols=\"1,2\"]\n|===\n|Item |Value\n\n|K8s object type\n|Deployment\n\n|Robustness\n|Nb replicas >= nb AZ (minimum 3)\n\n|Resiliency\n|Zonal anti-affinity with TopologySpreadConstraint. +\nPods must be dispatch throught all the AZ with at least one instance by AZ. +\nIf multiple instances are on the same AZ, they must be on differents nodes.\n\n|PodDisruptionBudget\n|minavailable = nb AZ (minimum 3)\n\n|Service type\n|ClusterIP with service.kubernetes.io/topology-mode=Auto\n\n|Exposition\n|Internal only\n\n|PreStop\n|Must call the stop.sh script\n\n|terminationGracePeriodSeconds\n|At least 60s, must be higher than the higher http timeout of this component io allow calls in progress to be terminated nominally.\n\n\n|Readiness\n|\npath : {protocol}://localhost:{port}/api/falcon/health/ready +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 3\n\n| Liveness\n|\npath : {protocol}://localhost:{port}/api/falcon/health/alive +\ninitialDelaySeconds: 15 +\nperiodSeconds: 10 +\ntimeoutSeconds: 5 +\nsuccessThreshold: 1 +\nfailureThreshold: 5\n\n|===\n\ngtw_player_network_flux\n",
+      "filename" : "05_building_block_view.adoc",
+      "format" : "AsciiDoc",
+      "order" : 5,
+      "title" : ""
+    }, {
+      "content" : "ifndef::imagesdir[:imagesdir: ../images]\n\n[[section-runtime-view]]\n== Runtime View\n\n\n[role=\"arc42help\"]\n****\n.Contents\nThe runtime view describes concrete behavior and interactions of the system’s building blocks in form of scenarios from the following areas:\n\n* important use cases or features: how do building blocks execute them?\n* interactions at critical external interfaces: how do building blocks cooperate with users and neighboring systems?\n* operation and administration: launch, start-up, stop\n* error and exception scenarios\n\nRemark: The main criterion for the choice of possible scenarios (sequences, workflows) is their *architectural relevance*. It is *not* important to describe a large number of scenarios. You should rather document a representative selection.\n\n.Motivation\nYou should understand how (instances of) building blocks of your system perform their job and communicate at runtime.\nYou will mainly capture scenarios in your documentation to communicate your architecture to stakeholders that are less willing or able to read and understand the static models (building block view, deployment view).\n\n.Form\nThere are many notations for describing scenarios, e.g.\n\n* numbered list of steps (in natural language)\n* activity diagrams or flow charts\n* sequence diagrams\n* BPMN or EPCs (event process chains)\n* state machines\n* ...\n\n\n.Further Information\n\nSee https://docs.arc42.org/section-6/[Runtime View] in the arc42 documentation.\n\n****\n\n=== Scenario 1 – Terminal Ticket Operation\n.Terminal execution flow\n1. `Terminal` calls HTTPS endpoint on `ingress_terminal` with token.\n2. `ingress_terminal` validates token (Keycloak/Okta depending on scope), injects trace headers, forwards to `ims_terminal`.\n3. `ims_terminal` performs domain validation, maybe invokes `ttp_terminal` for gain retrieval logic.\n4. Domain component persists state via call to `egress_postgreqsl` (no direct DB connection).\n5. Post-commit hook (Debezium) captures change from Postgresql and streams to `kafka`.\n6. `kafka` distributes events to consumers (audit, data) via `egress_audit` / `egress_data` paths.\n\nNotable Aspects:: Clear separation of auth (ingress), business rules (IMS/TTP), persistence mediation (egress_postgreqsl) and replication (Debezium).\n\n=== Scenario 2 – Operator Configuration Change\n1. `Operator` loads BackOffice (static/UI) through `ingress_operator` → `backoffice`.\n2. Action request (e.g. limit adjustment) sent to `ingress_operator` → routed to `ims_operator`.\n3. `ims_operator` updates domain model → persists through `egress_postgreqsl`.\n4. `ims_operator` emits internal event (DB mutation) captured by Debezium → `kafka`.\n5. Retail propagation triggered: `ims_operator` invokes `rtl_adapter_operator` which normalises payload and calls `egress_operator` → Retail system.\n6. Acknowledgement returned; BackOffice updates UI state.\n\nFailure Handling:: Retail timeout triggers retry/backoff strategy in adapter (future spec); base transaction already durable in DB.\n\n=== Scenario 3 – Limit Propagation (Terminal Path)\nSimilar to operator path but initiated by `ims_terminal` or `ttp_terminal` after evaluating business rules. Flow: Domain container → `rtl_adapter_terminal` → `egress_terminal` → Retail.\n\n=== Scenario 4 – Token Validation (Operator)\n1. `Operator` authenticates against Okta (browser OIDC).\n2. Access token presented to `ingress_operator`.\n3. `ingress_operator` introspects/validates via `egress_okta`.\n4. On success forwards downstream adding correlation + identity claims.\n\n=== Scenario 5 – iDecide Validation Flow\n1. `iDecide` initiates authentication/validate/lock/paid call to `ingress_iDecide`.\n2. `ingress_iDecide` validates request, forwards to `ttp_terminal`.\n3. `ttp_terminal` performs logic, may consult Keycloak if token refresh needed.\n4. Response propagates back to `iDecide` via ingress.\n\n=== Scenario 6 – Change Data Capture & Replication\n1. Any domain write goes through `egress_postgreqsl` to Postgresql.\n2. `debezium` streams WAL logical changes → `kafka` (`Push events`).\n3. `kafka` routes topics consumed by `egress_audit` (→ Audit store) & `egress_data` (→ Data platform).\n4. Failures on downstream sinks do not block source transaction (asynchronous decoupling).\n\n=== Scenario 7 – Audit Retrieval (Read Game Configuration)\n1. `ims_operator` needs configuration artifact.\n2. Calls `egress_s3` which signs and dispatches HTTPS request to `S3`.\n3. Result cached (future optimisation) and forwarded back.\n\n=== Error Scenarios (Representative)\n[cols=\"e,3e,4e,3e\" options=\"header\"]\n|===\n|Scenario |Detection |Mitigation |Architectural Support\n|Retail timeout |Adapter timeout |Retry/backoff, dead-letter if persistent |Dedicated adapter + egress policy\n|DB latency spike |Egress metrics (p99) |Circuit breaker opens, fail fast |Centralised DB mediation\n|Invalid token |Ingress validation failure |401 returned |Ingress isolation\n|Kafka outage |Producer error / Debezium backpressure |Buffer & alert; operations escalate |Asynchronous CDC decouples writes\n|Audit sink failure |egress_audit error |Retry queue, alert |Separate egress prevents cascade\n|===\n\n=== Concurrency & Ordering Notes\n* Domain invariant enforcement occurs before persistence.\n* Debezium guarantees per-table ordering; cross-aggregate ordering not assumed.\n* Retail limit updates are idempotent (required to cope with retries).\n\n=== Observability Hooks\n* Trace root established at ingress; span propagation through domain and egress.\n* Structured logs at ingress/egress exclude payloads; correlation IDs added.\n* Metrics: request_count, error_count, latency_histogram per container; replication lag for Debezium.\n\n",
+      "filename" : "06_runtime_view.adoc",
+      "format" : "AsciiDoc",
+      "order" : 6,
+      "title" : ""
+    }, {
+      "content" : "ifndef::imagesdir[:imagesdir: ../images]\n\n[[section-deployment-view]]\n\n\n== Deployment View\n\n[role=\"arc42help\"]\n****\n.Content\nThe deployment view describes:\n\n 1. technical infrastructure used to execute your system, with infrastructure elements like geographical locations, environments, computers, processors, channels and net topologies as well as other infrastructure elements and\n\n2. mapping of (software) building blocks to that infrastructure elements.\n\nOften systems are executed in different environments, e.g. development environment, test environment, production environment. In such cases you should document all relevant environments.\n\nEspecially document a deployment view if your software is executed as distributed system with more than one computer, processor, server or container or when you design and construct your own hardware processors and chips.\n\nFrom a software perspective it is sufficient to capture only those elements of an infrastructure that are needed to show a deployment of your building blocks. Hardware architects can go beyond that and describe an infrastructure to any level of detail they need to capture.\n\n.Motivation\nSoftware does not run without hardware.\nThis underlying infrastructure can and will influence a system and/or some\ncross-cutting concepts. Therefore, there is a need to know the infrastructure.\n\n.Form\n\nMaybe a highest level deployment diagram is already contained in section 3.2. as\ntechnical context with your own infrastructure as ONE black box. In this section one can\nzoom into this black box using additional deployment diagrams:\n\n* UML offers deployment diagrams to express that view. Use it, probably with nested diagrams,\nwhen your infrastructure is more complex.\n* When your (hardware) stakeholders prefer other kinds of diagrams rather than a deployment diagram, let them use any kind that is able to show nodes and channels of the infrastructure.\n\n\n.Further Information\n\nSee https://docs.arc42.org/section-7/[Deployment View] in the arc42 documentation.\n\n****\n\n=== Infrastructure Level 1\n\n[role=\"arc42help\"]\n****\nDescribe (usually in a combination of diagrams, tables, and text):\n\n* distribution of a system to multiple locations, environments, computers, processors, .., as well as physical connections between them\n* important justifications or motivations for this deployment structure\n* quality and/or performance features of this infrastructure\n* mapping of software artifacts to elements of this infrastructure\n\nFor multiple environments or alternative deployments please copy and adapt this section of arc42 for all relevant environments.\n****\n\n_**High-Level Deployment (Conceptual)**_\n\nMotivation:: Provide resilient, observable and secure execution environment separating edge (ingress), business logic (domain), outbound mediation (egress) and infrastructure services (CDC, identity, event backbone).\n\nQuality and/or Performance Features::\n* Multi-AZ redundancy; replicas per critical stateless container ≥ number of AZ.\n* Clear latency budgets: ingress <→ domain <→ egress adds bounded overhead.\n* Controlled outbound: only egress layer holds external network permissions.\n* Asynchronous replication (Debezium + Kafka) decouples writes from sinks.\n* Token validation offloaded to ingress & identity providers.\n\nMapping of Building Blocks to Infrastructure:: Each logical container (see Section 5) maps to a Kubernetes `Deployment` (stateless) except persistence (Postgresql managed service) and Kafka (cluster). NetworkPolicies restrict flows: External → Ingress; Ingress → Domain; Domain ↔ Domain (limited); Domain → Egress; Egress → External; Debezium → DB & Kafka.\n\n[cols=\"e,4e\"]\n|===\n|Layer / Node |Deployed Containers\n|Ingress |`ingress_terminal`, `ingress_operator`, `ingress_iDecide`\n|Domain (Terminal path) |`ims_terminal`, `ttp_terminal`\n|Domain (Operator path) |`ims_operator`, `ttp_operator`\n|Adapters |`rtl_adapter_terminal`, `rtl_adapter_operator`\n|Egress |`egress_postgreqsl`, `egress_terminal`, `egress_operator`, `egress_s3`, `egress_data`, `egress_audit`, `egress_okta`\n|Event & CDC |`debezium`, `kafka`\n|Identity |`keycloak`\n|UI |`backoffice`\n|Managed Services |Postgresql cluster, Okta, S3, Retail platform, Data platform, Audit store, iDecide\n|===\n\n\n=== Infrastructure Level 2\n\n[role=\"arc42help\"]\n****\nHere you can include the internal structure of (some) infrastructure elements from level 1.\n\nPlease copy the structure from level 1 for each selected element.\n****\n\n==== Ingress Layer\nKubernetes Deployments (HPA enabled). Handles TLS termination (or delegated from external LB), token validation (Okta/Keycloak), rate limiting (future). Failure isolates edge without impacting domain scaling.\n\n==== Domain Layer\nStateless business services. Horizontal scaling based on CPU + custom latency metrics. Communicate only with egress_postgreqsl for persistence and adapters for propagation.\n\n==== Egress Layer\nOutbound mediation pods with strict allowlist of destinations. Implement retries, exponential backoff, circuit breaking and metrics (success/error rates). Central point for compliance logging.\n\n==== Event & CDC\n`debezium` streams logical changes from Postgresql to `kafka`. Kafka topics partitioned by domain aggregate; replication factor >= AZ count. Connectors (future) may push to external sinks beyond data/audit.\n\n==== Identity\n`keycloak` deployed inside cluster (stateful if HA required). Okta remains external SaaS; `egress_okta` handles token introspection/JWKS retrieval with caching.\n\n==== Observability (Planned Extension)\nNot yet modelled in DSL: OpenTelemetry Collector, Prometheus, Grafana. Will instrument ingress, domain, egress layers with standardized metrics & traces.\n\n==== Deployment NFR Summary\n[cols=\"e,3e,5e\" options=\"header\"]\n|===\n|Aspect |Target |Notes\n|Availability |Ingress/Domain/Egress ≥ AZ count |Except stateful infra components\n|Graceful Shutdown |terminationGracePeriodSeconds >= max request timeout |Protect in-flight ops\n|Latency Budget |p99 edge→persist < 250ms (steady state) |Excludes downstream >1s calls\n|Security |Zero direct outbound from domain |Outbound only via egress layer\n|Scalability |Linear within tested range (N up to 10 replicas) |Kafka & DB sized independently\n|Change Governance |DSL update prerequisite to deployment change |Prevents drift\n|Backup/Recovery |DB managed service point-in-time restore; Kafka topic retention + snapshots |Meets integrity goal\n|===\n\n",
+      "filename" : "07_deployment_view.adoc",
+      "format" : "AsciiDoc",
+      "order" : 7,
+      "title" : ""
+    }, {
+      "content" : "ifndef::imagesdir[:imagesdir: ../images]\n\n[[section-concepts]]\n== Cross-cutting Concepts\n\n\n[role=\"arc42help\"]\n****\n.Content\nThis section describes overall, principal regulations and solution ideas that are relevant in multiple parts (= cross-cutting) of your system.\nSuch concepts are often related to multiple building blocks.\nThey can include many different topics, such as\n\n* models, especially domain models\n* architecture or design patterns\n* rules for using specific technology\n* principal, often technical decisions of an overarching (= cross-cutting) nature\n* implementation rules\n\n\n.Motivation\nConcepts form the basis for _conceptual integrity_ (consistency, homogeneity) of the architecture. \nThus, they are an important contribution to achieve inner qualities of your system.\n\nSome of these concepts cannot be assigned to individual building blocks, e.g. security or safety. \n\n\n.Form\nThe form can be varied:\n\n* concept papers with any kind of structure\n* cross-cutting model excerpts or scenarios using notations of the architecture views\n* sample implementations, especially for technical concepts\n* reference to typical usage of standard frameworks (e.g. using Hibernate for object/relational mapping)\n\n.Structure\nA potential (but not mandatory) structure for this section could be:\n\n* Domain concepts\n* User Experience concepts (UX)\n* Safety and security concepts\n* Architecture and design patterns\n* \"Under-the-hood\"\n* development concepts\n* operational concepts\n\nNote: it might be difficult to assign individual concepts to one specific topic\non this list.\n\nimage::08-Crosscutting-Concepts-Structure-EN.png[\"Possible topics for crosscutting concepts\"]\n\n\n.Further Information\n\nSee https://docs.arc42.org/section-8/[Concepts] in the arc42 documentation.\n****\n\n\n=== Domain Model Fragments\nCore aggregates (informel – détaillé dans la doc métier) concernent: Ticket, Limit, Operation (action opérateur ou terminal), Configuration Artifact. Chaque mutation persistée est reflétée dans le flux CDC.\n\n=== Security & Trust Boundary\n*Ingress Only* pour authentification / autorisation; *Egress Only* pour sorties réseau. Aucune communication sortante directe depuis les conteneurs de domaine.\nToken Validation: Okta (operator) & Keycloak (terminal/iDecide). Claims normalisées dans un en-tête interne standard.\n\n=== Persistence & CDC\nPattern Outbox gratuit via Debezium (pas d’outbox table explicite). Conséquence: design de schéma attentif à la granularité des topics; usage de clés de partition déterministes pour ordonnancement par agrégat.\n\n=== Observability\nTrace Id généré à l’ingress. Logs structurés JSON (sans payload). Métriques: requêtes, p95/p99 latence, erreurs, queue length (futur) pour propagation retail.\n\n=== Resilience Patterns\nCircuit Breakers sur egress (DB, retail, audit, data, s3, okta). Retries exponentiels (max 3) sauf opérations idempotentes retail (peuvent aller à 5). Bulkhead: séparation physique des pods egress vs domain.\n\n=== Configuration Management\nArtifacts versionnés dans S3; hash checksum loggué lors de la récupération. Aucune configuration critique injectée dynamiquement sans redéploiement sauf credentials (vault / secrets rotation).\n\n=== Deployment & Scaling\nHPA sur CPU + latence p95 composite. Domain & ingress scalent indépendamment. Egress souvent bound par outbound connections – limites max contrôlées.\n\n=== Evolution Workflow\n1. Modifier DSL (ajout container / relation) 2. Générer diagrammes 3. Mettre à jour documentation (sections 3,5,6,7 si nécessaire) 4. Revue d’architecture.\n\n=== Failure Modes Catalogue (Extrait)\n[cols=\"e,3e,3e,3e\" options=\"header\"]\n|===\n|Mode |Cause |Impact |Mitigation\n|DB latency |IO / plan |Dégradation requêtes terminal |Circuit breaker + alert\n|Kafka unavailable |Broker outage |Retard réplication audit/data |Backpressure Debezium + alerte\n|Retail API timeout |Réseau externe |Retard mise à jour limite |Retry + idempotence\n|Token introspection fail |Okta indisponible |Rejets opérateur |Cache JWKS / TTL court\n|S3 read fail |Réseau/artefact |Config non chargée |Retry + fallback version précédente\n|===\n\n=== Glossary Hooks\nVoir section 11 pour les définitions formelles (Ticket, Limit, CDC, etc.).\n\n",
+      "filename" : "08_concepts.adoc",
+      "format" : "AsciiDoc",
+      "order" : 8,
+      "title" : ""
+    }, {
+      "content" : "ifndef::imagesdir[:imagesdir: ../images]\n\n[[section-quality-scenarios]]\n== Quality Requirements\n\n\n[role=\"arc42help\"]\n****\n\n.Content\nThis section contains all quality requirements as quality tree with scenarios. The most important ones have already been described in section 1.2. (quality goals)\n\nHere you can also capture quality requirements with lesser priority,\nwhich will not create high risks when they are not fully achieved.\n\n.Motivation\nSince quality requirements will have a lot of influence on architectural\ndecisions you should know for every stakeholder what is really important to them,\nconcrete and measurable.\n\n\n.Further Information\n\nSee https://docs.arc42.org/section-10/[Quality Requirements] in the arc42 documentation.\n\n****\n\n=== Quality Tree\n\n[role=\"arc42help\"]\n****\n.Content\nThe quality tree (as defined in ATAM – Architecture Tradeoff Analysis Method) with quality/evaluation scenarios as leafs.\n\n.Motivation\nThe tree structure with priorities provides an overview for a sometimes large number of quality requirements.\n\n.Form\nThe quality tree is a high-level overview of the quality goals and requirements:\n\n* tree-like refinement of the term \"quality\". Use \"quality\" or \"usefulness\" as a root\n* a mind map with quality categories as main branches\n\nIn any case the tree should include links to the scenarios of the following section.\n\n\n****\n\n=== Quality Scenarios\n\n[cols=\"e,2e,3e,3e,2e\" options=\"header\"]\n|===\n|ID |Attribute |Scenario |Stimulus / Environment |Acceptance\n|LAT-1 |Performance |Terminal ticket operation round-trip |Normal load (p50) |p50 < 120 ms\n|LAT-2 |Performance |Terminal ticket operation round-trip |Peak load (p95) |p95 < 250 ms\n|AV-1 |Availability |Ingress pod failure |Single pod killed |No 5xx spike > 1% over 1 min\n|RES-1 |Resilience |Retail API timeout |Retail 30s outage |< 2 min backlog recovery; no data loss\n|INT-1 |Integrity |Concurrent limit updates |Two parallel ops |Serialised final state; exactly-once persistence\n|OBS-1 |Observability |Correlation of audit event |Investigate ticket id |Trace+log correlation < 30s effort\n|SEC-1 |Security |Expired operator token |Request with expired token |401 returned; no downstream call\n|EVOL-1 |Evolvability |Add new external system |Architect updates DSL + docs |< 0.5 day including review\n|REL-1 |Reliability |Kafka broker loss |1 of 3 brokers down |No data loss; consumer lag < 2x baseline\n|CAP-1 |Capacity |Sustained load increase |+50% RPS for 1h |Auto-scale to maintain p95 target\n|===\n\n=== Change Scenarios\n*CHG-1*: Adding a new outbound dependency requires: DSL relation + new `egress_*` container + network policy + doc updates (Sections 3,5,7). Target lead time: < 1 day.\n*CHG-2*: Schema evolution (non-breaking) – DB change applied, Debezium streams updated; consumers unaffected. Must pass CDC integration test suite.\n\n=== Monitoring & Measurement\nMetrics mapped: LAT-* via ingress histograms; AV-* via synthetic probes; RES-* via queued retry counters; INT-* via DB consistency check; OBS-* manual runbook test; SEC-* via security integration tests; REL-* via Kafka lag metrics; CAP-* via HPA logs.\n\n=== Prioritisation\nTop-tier: Integrity (INT-1), Availability (AV-1), Security (SEC-1), Latency (LAT-2). Others tier 2 unless risk escalates.\n\n\n[role=\"arc42help\"]\n****\n.Contents\nConcretization of (sometimes vague or implicit) quality requirements using (quality) scenarios.\n\nThese scenarios describe what should happen when a stimulus arrives at the system.\n\nFor architects, two kinds of scenarios are important:\n\n* Usage scenarios (also called application scenarios or use case scenarios) describe the system’s runtime reaction to a certain stimulus. This also includes scenarios that describe the system’s efficiency or performance. Example: The system reacts to a user’s request within one second.\n* Change scenarios describe a modification of the system or of its immediate environment. Example: Additional functionality is implemented or requirements for a quality attribute change.\n\n.Motivation\nScenarios make quality requirements concrete and allow to\nmore easily measure or decide whether they are fulfilled.\n\nEspecially when you want to assess your architecture using methods like\nATAM you need to describe your quality goals (from section 1.2)\nmore precisely down to a level of scenarios that can be discussed and evaluated.\n\n.Form\nTabular or free form text.\n****\n",
+      "filename" : "09_quality_requirements.adoc",
+      "format" : "AsciiDoc",
+      "order" : 9,
+      "title" : ""
+    }, {
+      "content" : "ifndef::imagesdir[:imagesdir: ../images]\n\n[[section-technical-risks]]\n== Risks and Technical Debts\n\n\n[role=\"arc42help\"]\n****\n.Contents\nA list of identified technical risks or technical debts, ordered by priority\n\n.Motivation\n“Risk management is project management for grown-ups” (Tim Lister, Atlantic Systems Guild.) \n\nThis should be your motto for systematic detection and evaluation of risks and technical debts in the architecture, which will be needed by management stakeholders (e.g. project managers, product owners) as part of the overall risk analysis and measurement planning.\n\n.Form\nList of risks and/or technical debts, probably including suggested measures to minimize, mitigate or avoid risks or reduce technical debts.\n\n\n.Further Information\n\nSee https://docs.arc42.org/section-11/[Risks and Technical Debt] in the arc42 documentation.\n\n****\n\n=== Risk Register\n\n[cols=\"e,3e,4e,3e,2e\" options=\"header\"]\n|===\n|ID |Risk |Impact |Mitigation |Status\n|R1 |Single region Postgresql |Regional outage causes full downtime |Multi-region read replica + tested failover runbook |Open\n|R2 |Kafka capacity under-estimate |Delayed audit/data replication |Capacity tests + broker autoscaling |Monitoring\n|R3 |Egress policy misconfiguration |Unintended outbound access |Automated network policy validation in CI |Planned\n|R4 |DSL & deployment drift |Documentation loses trust |Automated DSL vs manifests diff check |Planned\n|R5 |Retail propagation retries unbounded |Resource exhaustion during outage |Retry budget + circuit breaker thresholds |Design\n|R6 |Token introspection latency |Operator UX degradation |JWKS cache + proactive refresh |Mitigated\n|R7 |Debezium schema evolution failure |CDC interruption / data gap |Staging rehearsal migration pipeline |Mitigated\n|R8 |Keycloak single instance |Auth disruption |Introduce HA or external managed IDP |Open\n|R9 |Missing rate limiting |Potential overload / abuse |Implement ingress rate limiting |Planned\n|R10 |Observability gaps (no OTel collector) |Long MTTR |Deploy OTel collector + dashboards |Planned\n|===\n\n=== Technical Debt\n[cols=\"e,3e,5e,2e\" options=\"header\"]\n|===\n|ID |Debt |Remediation |Priority\n|D1 |Manual DSL/doc sync |Automated regeneration & validation |High\n|D2 |Absence of formal SLOs |Define SLI/SLO & error budgets |High\n|D3 |Inconsistent naming (ims/ttp) |Refactor to explicit bounded context names |Medium\n|D4 |Ad-hoc retry policies |Central config & shared library |Medium\n|D5 |No chaos testing |Introduce controlled failure injection |Low\n|===\n\n=== Review Cadence\nQuarterly architecture review updates risk statuses; High priority debts tracked in backlog with explicit owners.\n\n",
+      "filename" : "10_technical_risks.adoc",
+      "format" : "AsciiDoc",
+      "order" : 10,
+      "title" : ""
+    }, {
+      "content" : "ifndef::imagesdir[:imagesdir: ../images]\n\n[[section-glossary]]\n== Glossary\n\n[cols=\"e,2e\" options=\"header\"]\n|===\n|Term |Definition\n|Ingress (container)\n|Edge component (Envoy) validant les tokens, injectant télémétrie et appliquant politiques de sécurité.\n\n|Egress (container)\n|Composant de médiation réseau sortant appliquant timeouts, retries, circuit breaking et audit.\n\n|IMS (operator/terminal)\n|Service domaine gérant opérations métier principales côté opérateur ou terminal.\n\n|TTP (operator/terminal)\n|Service domaine complémentaire focalisé sur traitements transactionnels/gains.\n\n|RTL adapter\n|Adaptateur traduisant les mises à jour de limites vers le format Retail.\n\n|CDC (Change Data Capture)\n|Mécanisme Debezium de streaming des changements Postgresql vers Kafka.\n\n|Limit Update\n|Opération modifiant la capacité/quotas consommables côté retail.\n\n|Trace ID\n|Identifiant de corrélation injecté à l’ingress et propagé.\n\n|Idempotence\n|Propriété assurant qu’une répétition d’une requête produit le même état (utilisée pour propagation Retail).\n\n|DSL (Structurizr)\n|Langage déclaratif décrivant acteurs, systèmes, conteneurs et relations canonique.\n\n|Debezium\n|Composant CDC capturant WAL Postgresql et publiant sur Kafka.\n\n|BackOffice\n|Interface utilisateur opérateur pour administration et actions configurables.\n\n|Keycloak\n|Fournisseur d’identité interne OIDC utilisé pour certains flux terminal/iDecide.\n\n|Okta\n|Fournisseur d’identité externe pour les opérateurs.\n\n|Retail Platform\n|Système externe recevant les mises à jour de limites.\n\n|Audit Store\n|Système externe recevant flux d’audit pour traçabilité réglementaire.\n\n|Data Platform\n|Système externe de consommation analytique des événements.\n\n|S3 (compatible)\n|Stockage d’artefacts de configuration (catalogues, scripts, etc.).\n\n|egress_postgreqsl\n|Conteneur egress spécialisé sécurisant l’accès Postgresql (nom volontairement aligné DSL).\n\n\n\n|===\n",
+      "filename" : "11_glossary.adoc",
+      "format" : "AsciiDoc",
+      "order" : 11,
+      "title" : ""
+    } ]
+  },
+  "id" : 1,
+  "lastModifiedAgent" : "structurizr-ui",
+  "lastModifiedDate" : "2025-09-16T09:21:04Z",
+  "model" : {
+    "people" : [ {
+      "id" : "1",
+      "location" : "Unspecified",
+      "name" : "Terminal",
+      "properties" : {
+        "structurizr.dsl.identifier" : "terminal"
+      },
+      "relationships" : [ {
+        "description" : "Terminal actions",
+        "destinationId" : "13",
+        "id" : "30",
+        "sourceId" : "1",
+        "tags" : "Relationship",
+        "technology" : "Https"
+      }, {
+        "description" : "Terminal actions",
+        "destinationId" : "10",
+        "id" : "31",
+        "linkedRelationshipId" : "30",
+        "sourceId" : "1",
+        "technology" : "Https"
+      } ],
+      "tags" : "Element,Person,terminal,terminal_actor"
+    }, {
+      "id" : "2",
+      "location" : "Unspecified",
+      "name" : "Operator",
+      "properties" : {
+        "structurizr.dsl.identifier" : "operator"
+      },
+      "relationships" : [ {
+        "description" : "Operator actions",
+        "destinationId" : "22",
+        "id" : "35",
+        "sourceId" : "2",
+        "tags" : "Relationship",
+        "technology" : "Https"
+      }, {
+        "description" : "Operator actions",
+        "destinationId" : "10",
+        "id" : "36",
+        "linkedRelationshipId" : "35",
+        "sourceId" : "2",
+        "technology" : "Https"
+      }, {
+        "description" : "Authentification",
+        "destinationId" : "5",
+        "id" : "66",
+        "sourceId" : "2",
+        "tags" : "Relationship",
+        "technology" : "Https"
+      } ],
+      "tags" : "Element,Person,operator,operator_actor"
+    } ],
+    "softwareSystems" : [ {
+      "documentation" : { },
+      "id" : "3",
+      "location" : "Unspecified",
+      "name" : "S3",
+      "properties" : {
+        "structurizr.dsl.identifier" : "s3"
+      },
+      "tags" : "Element,Software System,s3"
+    }, {
+      "documentation" : { },
+      "id" : "4",
+      "location" : "Unspecified",
+      "name" : "iDecide",
+      "properties" : {
+        "structurizr.dsl.identifier" : "idecide"
+      },
+      "relationships" : [ {
+        "description" : "iDecide authentication/validate/lock/paid",
+        "destinationId" : "14",
+        "id" : "63",
+        "sourceId" : "4",
+        "tags" : "Relationship",
+        "technology" : "Https"
+      }, {
+        "description" : "iDecide authentication/validate/lock/paid",
+        "destinationId" : "10",
+        "id" : "64",
+        "linkedRelationshipId" : "63",
+        "sourceId" : "4",
+        "technology" : "Https"
+      } ],
+      "tags" : "Element,Software System,iDecide"
+    }, {
+      "documentation" : { },
+      "id" : "5",
+      "location" : "Unspecified",
+      "name" : "Okta",
+      "properties" : {
+        "structurizr.dsl.identifier" : "okta"
+      },
+      "tags" : "Element,Software System,okta"
+    }, {
+      "documentation" : { },
+      "id" : "6",
+      "location" : "Unspecified",
+      "name" : "Data platform",
+      "properties" : {
+        "structurizr.dsl.identifier" : "data"
+      },
+      "tags" : "Element,Software System,data"
+    }, {
+      "documentation" : { },
+      "id" : "7",
+      "location" : "Unspecified",
+      "name" : "Audit store",
+      "properties" : {
+        "structurizr.dsl.identifier" : "audit_store"
+      },
+      "tags" : "Element,Software System,audit_store"
+    }, {
+      "documentation" : { },
+      "id" : "8",
+      "location" : "Unspecified",
+      "name" : "Postgresql",
+      "properties" : {
+        "structurizr.dsl.identifier" : "database"
+      },
+      "tags" : "Element,Software System,database"
+    }, {
+      "documentation" : { },
+      "id" : "9",
+      "location" : "Unspecified",
+      "name" : "Instant Ticket Manager System (Retail)",
+      "properties" : {
+        "structurizr.dsl.identifier" : "itms_platform_retail"
+      },
+      "tags" : "Element,Software System,retail"
+    }, {
+      "containers" : [ {
+        "documentation" : { },
+        "id" : "11",
+        "name" : "Keycloak",
+        "properties" : {
+          "structurizr.dsl.identifier" : "keycloak"
+        },
+        "tags" : "Element,Container,keycloak"
+      }, {
+        "documentation" : { },
+        "id" : "12",
+        "name" : "BackOffice",
+        "properties" : {
+          "structurizr.dsl.identifier" : "backoffice"
+        },
+        "tags" : "Element,Container,operator"
+      }, {
+        "description" : "Token validation, protocol break (HTTPS decryption/re-encryption), access logs (without payload), application of open telemetry headers",
+        "documentation" : { },
+        "id" : "13",
+        "name" : "Ingress terminal",
+        "properties" : {
+          "structurizr.dsl.identifier" : "ingress_terminal"
+        },
+        "relationships" : [ {
+          "description" : "Terminal actions",
+          "destinationId" : "24",
+          "id" : "32",
+          "sourceId" : "13",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,component,terminal",
+        "technology" : "Envoy"
+      }, {
+        "description" : "Token validation, protocol break (HTTPS decryption/re-encryption), access logs (without payload), application of open telemetry headers",
+        "documentation" : { },
+        "id" : "14",
+        "name" : "Ingress iDecide",
+        "properties" : {
+          "structurizr.dsl.identifier" : "ingress_idecide"
+        },
+        "relationships" : [ {
+          "description" : "iDecide validate/lock/paid",
+          "destinationId" : "26",
+          "id" : "65",
+          "sourceId" : "14",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        }, {
+          "description" : "Authentification",
+          "destinationId" : "11",
+          "id" : "71",
+          "sourceId" : "14",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,component,iDecide",
+        "technology" : "Envoy"
+      }, {
+        "description" : "Authorised outbound flow to the audit store cluster",
+        "documentation" : { },
+        "id" : "15",
+        "name" : "Egress audit store",
+        "properties" : {
+          "structurizr.dsl.identifier" : "egress_audit"
+        },
+        "relationships" : [ {
+          "description" : "Audit replication",
+          "destinationId" : "7",
+          "id" : "58",
+          "sourceId" : "15",
+          "tags" : "Relationship",
+          "technology" : "TCP/TLS"
+        } ],
+        "tags" : "Element,Container,component,audit_store",
+        "technology" : "Egress"
+      }, {
+        "description" : "Authorised outbound flow to Okta",
+        "documentation" : { },
+        "id" : "16",
+        "name" : "Egress okta",
+        "properties" : {
+          "structurizr.dsl.identifier" : "egress_okta"
+        },
+        "relationships" : [ {
+          "description" : "Token validation",
+          "destinationId" : "5",
+          "id" : "69",
+          "sourceId" : "16",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,component,okta",
+        "technology" : "Egress"
+      }, {
+        "description" : "Authorised outbound flow to the data cluster",
+        "documentation" : { },
+        "id" : "17",
+        "name" : "Egress data",
+        "properties" : {
+          "structurizr.dsl.identifier" : "egress_data"
+        },
+        "relationships" : [ {
+          "description" : "Replication data",
+          "destinationId" : "6",
+          "id" : "61",
+          "sourceId" : "17",
+          "tags" : "Relationship",
+          "technology" : "TCP/TLS"
+        } ],
+        "tags" : "Element,Container,component,data",
+        "technology" : "Egress"
+      }, {
+        "description" : "Authorised outbound flow to S3-compatible datagrid",
+        "documentation" : { },
+        "id" : "18",
+        "name" : "Egress S3",
+        "properties" : {
+          "structurizr.dsl.identifier" : "egress_s3"
+        },
+        "relationships" : [ {
+          "description" : "Read game configuration",
+          "destinationId" : "3",
+          "id" : "55",
+          "sourceId" : "18",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,component,s3",
+        "technology" : "Egress"
+      }, {
+        "description" : "Authorised outbound flow to the retail cluster",
+        "documentation" : { },
+        "id" : "19",
+        "name" : "Egress operator",
+        "properties" : {
+          "structurizr.dsl.identifier" : "egress_operator"
+        },
+        "relationships" : [ {
+          "description" : "Update limits",
+          "destinationId" : "9",
+          "id" : "53",
+          "sourceId" : "19",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,operator,component",
+        "technology" : "Egress"
+      }, {
+        "description" : "Authorised outbound flow to the DB cluster",
+        "documentation" : { },
+        "id" : "20",
+        "name" : "Egress postgresql",
+        "properties" : {
+          "structurizr.dsl.identifier" : "egress_postgreqsl"
+        },
+        "relationships" : [ {
+          "description" : "Read/Write access",
+          "destinationId" : "8",
+          "id" : "44",
+          "sourceId" : "20",
+          "tags" : "Relationship",
+          "technology" : "TCP/TLS"
+        } ],
+        "tags" : "Element,Container,component,database",
+        "technology" : "Egress"
+      }, {
+        "description" : "Authorised outbound flow to the retail cluster",
+        "documentation" : { },
+        "id" : "21",
+        "name" : "Egress terminal",
+        "properties" : {
+          "structurizr.dsl.identifier" : "egress_terminal"
+        },
+        "relationships" : [ {
+          "description" : "Update limits",
+          "destinationId" : "9",
+          "id" : "49",
+          "sourceId" : "21",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,terminal,component",
+        "technology" : "Egress"
+      }, {
+        "description" : "Token validation, protocol break (HTTPS decryption/re-encryption), access logs (without payload), application of open telemetry headers",
+        "documentation" : { },
+        "id" : "22",
+        "name" : "Ingress operator",
+        "properties" : {
+          "structurizr.dsl.identifier" : "ingress_operator"
+        },
+        "relationships" : [ {
+          "description" : "Load backoffice",
+          "destinationId" : "12",
+          "id" : "29",
+          "sourceId" : "22",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        }, {
+          "description" : "Operator actions",
+          "destinationId" : "23",
+          "id" : "37",
+          "sourceId" : "22",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        }, {
+          "description" : "Operator actions",
+          "destinationId" : "25",
+          "id" : "38",
+          "sourceId" : "22",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,operator,component",
+        "technology" : "Envoy"
+      }, {
+        "documentation" : { },
+        "id" : "23",
+        "name" : "IMS operator",
+        "properties" : {
+          "structurizr.dsl.identifier" : "ims_operator"
+        },
+        "relationships" : [ {
+          "description" : "Data persistence",
+          "destinationId" : "20",
+          "id" : "41",
+          "sourceId" : "23",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Update limits",
+          "destinationId" : "19",
+          "id" : "51",
+          "sourceId" : "23",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        }, {
+          "description" : "Read game configuration",
+          "destinationId" : "18",
+          "id" : "54",
+          "sourceId" : "23",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        }, {
+          "description" : "Token validation",
+          "destinationId" : "16",
+          "id" : "67",
+          "sourceId" : "23",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,operator"
+      }, {
+        "documentation" : { },
+        "id" : "24",
+        "name" : "IMS terminal",
+        "properties" : {
+          "structurizr.dsl.identifier" : "ims_terminal"
+        },
+        "relationships" : [ {
+          "description" : "Terminal actions",
+          "destinationId" : "26",
+          "id" : "33",
+          "sourceId" : "24",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        }, {
+          "description" : "Data persistence",
+          "destinationId" : "20",
+          "id" : "39",
+          "sourceId" : "24",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Update limits",
+          "destinationId" : "21",
+          "id" : "47",
+          "sourceId" : "24",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,terminal"
+      }, {
+        "documentation" : { },
+        "id" : "25",
+        "name" : "TTP operator",
+        "properties" : {
+          "structurizr.dsl.identifier" : "ttp_operator"
+        },
+        "relationships" : [ {
+          "description" : "Data persistence",
+          "destinationId" : "20",
+          "id" : "42",
+          "sourceId" : "25",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Update limits",
+          "destinationId" : "19",
+          "id" : "52",
+          "sourceId" : "25",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        }, {
+          "description" : "Token validation",
+          "destinationId" : "16",
+          "id" : "68",
+          "sourceId" : "25",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,operator"
+      }, {
+        "documentation" : { },
+        "id" : "26",
+        "name" : "TTP terminal",
+        "properties" : {
+          "structurizr.dsl.identifier" : "ttp_terminal"
+        },
+        "relationships" : [ {
+          "description" : "Fetch winnings",
+          "destinationId" : "13",
+          "id" : "34",
+          "sourceId" : "26",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        }, {
+          "description" : "Data persistence",
+          "destinationId" : "20",
+          "id" : "40",
+          "sourceId" : "26",
+          "tags" : "Relationship"
+        }, {
+          "description" : "Update limits",
+          "destinationId" : "21",
+          "id" : "48",
+          "sourceId" : "26",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        }, {
+          "description" : "iDecide Token validation",
+          "destinationId" : "11",
+          "id" : "72",
+          "sourceId" : "26",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,terminal"
+      }, {
+        "documentation" : { },
+        "id" : "27",
+        "name" : "Debezium",
+        "properties" : {
+          "structurizr.dsl.identifier" : "debezium"
+        },
+        "relationships" : [ {
+          "description" : "Replication",
+          "destinationId" : "20",
+          "id" : "43",
+          "sourceId" : "27",
+          "tags" : "Relationship",
+          "technology" : "TCP/TLS"
+        }, {
+          "description" : "Push events",
+          "destinationId" : "28",
+          "id" : "46",
+          "sourceId" : "27",
+          "tags" : "Relationship",
+          "technology" : "Https"
+        } ],
+        "tags" : "Element,Container,kafka"
+      }, {
+        "documentation" : { },
+        "id" : "28",
+        "name" : "Kafka + kafka connect",
+        "properties" : {
+          "structurizr.dsl.identifier" : "kafka"
+        },
+        "relationships" : [ {
+          "description" : "Audit replication",
+          "destinationId" : "15",
+          "id" : "57",
+          "sourceId" : "28",
+          "tags" : "Relationship",
+          "technology" : "TCP/TLS"
+        }, {
+          "description" : "Replication data",
+          "destinationId" : "17",
+          "id" : "60",
+          "sourceId" : "28",
+          "tags" : "Relationship",
+          "technology" : "TCP/TLS"
+        } ],
+        "tags" : "Element,Container,kafka"
+      } ],
+      "documentation" : { },
+      "id" : "10",
+      "location" : "Unspecified",
+      "name" : "Instant Ticket Manager System (Moteur)",
+      "properties" : {
+        "structurizr.dsl.identifier" : "itms_platform_moteur"
+      },
+      "relationships" : [ {
+        "description" : "Read/Write access",
+        "destinationId" : "8",
+        "id" : "45",
+        "linkedRelationshipId" : "44",
+        "sourceId" : "10",
+        "technology" : "TCP/TLS"
+      }, {
+        "description" : "Update limits",
+        "destinationId" : "9",
+        "id" : "50",
+        "linkedRelationshipId" : "49",
+        "sourceId" : "10",
+        "technology" : "Https"
+      }, {
+        "description" : "Read game configuration",
+        "destinationId" : "3",
+        "id" : "56",
+        "linkedRelationshipId" : "55",
+        "sourceId" : "10",
+        "technology" : "Https"
+      }, {
+        "description" : "Audit replication",
+        "destinationId" : "7",
+        "id" : "59",
+        "linkedRelationshipId" : "58",
+        "sourceId" : "10",
+        "technology" : "TCP/TLS"
+      }, {
+        "description" : "Replication data",
+        "destinationId" : "6",
+        "id" : "62",
+        "linkedRelationshipId" : "61",
+        "sourceId" : "10",
+        "technology" : "TCP/TLS"
+      }, {
+        "description" : "Token validation",
+        "destinationId" : "5",
+        "id" : "70",
+        "linkedRelationshipId" : "69",
+        "sourceId" : "10",
+        "technology" : "Https"
+      } ],
+      "tags" : "Element,Software System"
+    } ]
+  },
+  "name" : "ITMS : Instant Ticket Manager System",
+  "properties" : {
+    "structurizr.dsl" : "d29ya3NwYWNlIHsKICAgIG5hbWUgIklUTVMgOiBJbnN0YW50IFRpY2tldCBNYW5hZ2VyIFN5c3RlbSIKICAgIGRlc2NyaXB0aW9uICJJbnN0YW50IFRpY2tldCBNYW5hZ2VyIFN5c3RlbSBhbmQgYWxsIHRoZSBwbGF0Zm9ybXMgd2l0aCB3aGljaCBpdCBpbnRlcmFjdHMuIgogICAgY29uZmlndXJhdGlvbiB7CiAgICAgICAgc2NvcGUgU29mdHdhcmVTeXN0ZW0KICAgICAgICB2aXNpYmlsaXR5IHByaXZhdGUKICAgICAgICB1c2VycyB7CiAgICAgICAgICAgIGFybmF1ZCB3cml0ZQogICAgICAgICAgICBndWVzdCByZWFkCiAgICAgICAgfQogICAgfQoKICAgICFkb2NzIGRvY3VtZW50YXRpb24KICAgICFhZHJzIGFkcnMKCiAgICBtb2RlbCB7CiAgICAgICAgdGVybWluYWwgPSBwZXJzb24gIlRlcm1pbmFsInsKICAgICAgICAgICAgdGFnIHRlcm1pbmFsIHRlcm1pbmFsX2FjdG9yCiAgICAgICAgfQogICAgICAgIG9wZXJhdG9yID0gcGVyc29uICJPcGVyYXRvciJ7CiAgICAgICAgICAgIHRhZyBvcGVyYXRvciBvcGVyYXRvcl9hY3RvcgogICAgICAgIH0KCiAgICAgICAgczMgPSBzb2Z0d2FyZVN5c3RlbSAiUzMiewogICAgICAgICAgICB0YWcgczMKICAgICAgICB9CgogICAgICAgIGlEZWNpZGUgPSBzb2Z0d2FyZVN5c3RlbSAiaURlY2lkZSJ7CiAgICAgICAgICAgIHRhZyBpRGVjaWRlCiAgICAgICAgfQoKICAgICAgICBva3RhID0gc29mdHdhcmVTeXN0ZW0gIk9rdGEiewogICAgICAgICAgICB0YWcgb2t0YQogICAgICAgIH0KCgogICAgICAgIGRhdGEgPSBzb2Z0d2FyZVN5c3RlbSAiRGF0YSBwbGF0Zm9ybSJ7CiAgICAgICAgICAgIHRhZyBkYXRhCiAgICAgICAgfQoKICAgICAgICBhdWRpdF9zdG9yZSA9IHNvZnR3YXJlU3lzdGVtICJBdWRpdCBzdG9yZSJ7CiAgICAgICAgICAgIHRhZyBhdWRpdF9zdG9yZQogICAgICAgIH0KCiAgICAgICAgZGF0YWJhc2UgPSAgc29mdHdhcmVTeXN0ZW0gIlBvc3RncmVzcWwiewogICAgICAgICAgICB0YWcgZGF0YWJhc2UKICAgICAgICB9CiAgICAgICAgaXRtc19wbGF0Zm9ybV9yZXRhaWwgPSBzb2Z0d2FyZVN5c3RlbSAiSW5zdGFudCBUaWNrZXQgTWFuYWdlciBTeXN0ZW0gKFJldGFpbCkiIHsKICAgICAgICAgICAgdGFnIHJldGFpbAogICAgICAgIH0KICAgICAgICBpdG1zX3BsYXRmb3JtX21vdGV1ciA9IHNvZnR3YXJlU3lzdGVtICJJbnN0YW50IFRpY2tldCBNYW5hZ2VyIFN5c3RlbSAoTW90ZXVyKSIgewoKCiAgICAgICAgICAgIGtleWNsb2FrID0gY29udGFpbmVyICJLZXljbG9hayIgewogICAgICAgICAgICAgICAgdGFnIGtleWNsb2FrCiAgICAgICAgICAgIH0KCgogICAgICAgICAgICBiYWNrb2ZmaWNlID0gY29udGFpbmVyICJCYWNrT2ZmaWNlIiB7CiAgICAgICAgICAgICAgICB0YWcgb3BlcmF0b3IKICAgICAgICAgICAgfQoKICAgICAgICAgICAgaW5ncmVzc190ZXJtaW5hbCA9IGNvbnRhaW5lciAiSW5ncmVzcyB0ZXJtaW5hbCJ7CiAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJFbnZveSIKICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJUb2tlbiB2YWxpZGF0aW9uLCBwcm90b2NvbCBicmVhayAoSFRUUFMgZGVjcnlwdGlvbi9yZS1lbmNyeXB0aW9uKSwgYWNjZXNzIGxvZ3MgKHdpdGhvdXQgcGF5bG9hZCksIGFwcGxpY2F0aW9uIG9mIG9wZW4gdGVsZW1ldHJ5IGhlYWRlcnMiCiAgICAgICAgICAgICAgICB0YWcgY29tcG9uZW50IHRlcm1pbmFsCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGluZ3Jlc3NfaURlY2lkZSA9IGNvbnRhaW5lciAiSW5ncmVzcyBpRGVjaWRlInsKICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIkVudm95IgogICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIlRva2VuIHZhbGlkYXRpb24sIHByb3RvY29sIGJyZWFrIChIVFRQUyBkZWNyeXB0aW9uL3JlLWVuY3J5cHRpb24pLCBhY2Nlc3MgbG9ncyAod2l0aG91dCBwYXlsb2FkKSwgYXBwbGljYXRpb24gb2Ygb3BlbiB0ZWxlbWV0cnkgaGVhZGVycyIKICAgICAgICAgICAgICAgIHRhZyBjb21wb25lbnQgaURlY2lkZQogICAgICAgICAgICB9CgoKICAgICAgICAgICAgZWdyZXNzX2F1ZGl0ID0gY29udGFpbmVyICJFZ3Jlc3MgYXVkaXQgc3RvcmUiewogICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiRWdyZXNzIgogICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIkF1dGhvcmlzZWQgb3V0Ym91bmQgZmxvdyB0byB0aGUgYXVkaXQgc3RvcmUgY2x1c3RlciIKICAgICAgICAgICAgICAgIHRhZyBjb21wb25lbnQgYXVkaXRfc3RvcmUKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWdyZXNzX29rdGEgPSBjb250YWluZXIgIkVncmVzcyBva3RhInsKICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIkVncmVzcyIKICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJBdXRob3Jpc2VkIG91dGJvdW5kIGZsb3cgdG8gT2t0YSIKICAgICAgICAgICAgICAgIHRhZyBjb21wb25lbnQgb2t0YQogICAgICAgICAgICB9CgogICAgICAgICAgICBlZ3Jlc3NfZGF0YSA9IGNvbnRhaW5lciAiRWdyZXNzIGRhdGEiewogICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiRWdyZXNzIgogICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIkF1dGhvcmlzZWQgb3V0Ym91bmQgZmxvdyB0byB0aGUgZGF0YSBjbHVzdGVyIgogICAgICAgICAgICAgICAgdGFnIGNvbXBvbmVudCBkYXRhCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGVncmVzc19zMyA9IGNvbnRhaW5lciAiRWdyZXNzIFMzInsKICAgICAgICAgICAgICAgIHRlY2hub2xvZ3kgIkVncmVzcyIKICAgICAgICAgICAgICAgIGRlc2NyaXB0aW9uICJBdXRob3Jpc2VkIG91dGJvdW5kIGZsb3cgdG8gUzMtY29tcGF0aWJsZSBkYXRhZ3JpZCIKICAgICAgICAgICAgICAgIHRhZyBjb21wb25lbnQgczMKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWdyZXNzX29wZXJhdG9yID0gY29udGFpbmVyICJFZ3Jlc3Mgb3BlcmF0b3IiewogICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiRWdyZXNzIgogICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIkF1dGhvcmlzZWQgb3V0Ym91bmQgZmxvdyB0byB0aGUgcmV0YWlsIGNsdXN0ZXIiCiAgICAgICAgICAgICAgICB0YWcgb3BlcmF0b3IgY29tcG9uZW50CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGVncmVzc19wb3N0Z3JlcXNsID0gY29udGFpbmVyICJFZ3Jlc3MgcG9zdGdyZXNxbCJ7CiAgICAgICAgICAgICAgICB0ZWNobm9sb2d5ICJFZ3Jlc3MiCiAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiQXV0aG9yaXNlZCBvdXRib3VuZCBmbG93IHRvIHRoZSBEQiBjbHVzdGVyIgogICAgICAgICAgICAgICAgdGFnIGNvbXBvbmVudCBkYXRhYmFzZQoKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWdyZXNzX3Rlcm1pbmFsID0gY29udGFpbmVyICJFZ3Jlc3MgdGVybWluYWwiewogICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiRWdyZXNzIgogICAgICAgICAgICAgICAgZGVzY3JpcHRpb24gIkF1dGhvcmlzZWQgb3V0Ym91bmQgZmxvdyB0byB0aGUgcmV0YWlsIGNsdXN0ZXIiCiAgICAgICAgICAgICAgICB0YWcgdGVybWluYWwgY29tcG9uZW50CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGluZ3Jlc3Nfb3BlcmF0b3IgPSBjb250YWluZXIgIkluZ3Jlc3Mgb3BlcmF0b3IiewogICAgICAgICAgICAgICAgdGVjaG5vbG9neSAiRW52b3kiCiAgICAgICAgICAgICAgICBkZXNjcmlwdGlvbiAiVG9rZW4gdmFsaWRhdGlvbiwgcHJvdG9jb2wgYnJlYWsgKEhUVFBTIGRlY3J5cHRpb24vcmUtZW5jcnlwdGlvbiksIGFjY2VzcyBsb2dzICh3aXRob3V0IHBheWxvYWQpLCBhcHBsaWNhdGlvbiBvZiBvcGVuIHRlbGVtZXRyeSBoZWFkZXJzIgogICAgICAgICAgICAgICAgdGFnIG9wZXJhdG9yIGNvbXBvbmVudAogICAgICAgICAgICB9CgogICAgICAgICAgICBpbXNfb3BlcmF0b3IgPSBjb250YWluZXIgIklNUyBvcGVyYXRvciJ7CiAgICAgICAgICAgICAgICB0YWcgb3BlcmF0b3IKICAgICAgICAgICAgfQogICAgICAgICAgICBpbXNfdGVybWluYWwgPSBjb250YWluZXIgIklNUyB0ZXJtaW5hbCJ7CiAgICAgICAgICAgICAgICB0YWcgdGVybWluYWwKICAgICAgICAgICAgfQogICAgICAgICAgICB0dHBfb3BlcmF0b3IgPSBjb250YWluZXIgIlRUUCBvcGVyYXRvciJ7CiAgICAgICAgICAgICAgICB0YWcgb3BlcmF0b3IKICAgICAgICAgICAgfQogICAgICAgICAgICB0dHBfdGVybWluYWwgPSBjb250YWluZXIgIlRUUCB0ZXJtaW5hbCJ7CiAgICAgICAgICAgICAgICB0YWcgdGVybWluYWwKICAgICAgICAgICAgfQogICAgIAogICAgICAgICAgICBkZWJleml1bSA9IGNvbnRhaW5lciAiRGViZXppdW0iewogICAgICAgICAgICAgICAgdGFnIGthZmthCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGthZmthICA9IGNvbnRhaW5lciAiS2Fma2EgKyBrYWZrYSBjb25uZWN0InsKICAgICAgICAgICAgICAgIHRhZyBrYWZrYQogICAgICAgICAgICB9CiAgICAgICAgfQoKICAgICAgICBpbmdyZXNzX29wZXJhdG9yIC0+IGJhY2tvZmZpY2UgIkxvYWQgYmFja29mZmljZSIgSHR0cHMKCiAgICAgICAgdGVybWluYWwgLT4gaW5ncmVzc190ZXJtaW5hbCAiVGVybWluYWwgYWN0aW9ucyIgSHR0cHMKICAgICAgICBpbmdyZXNzX3Rlcm1pbmFsIC0+IGltc190ZXJtaW5hbCAiVGVybWluYWwgYWN0aW9ucyIgSHR0cHMKICAgICAgICBpbXNfdGVybWluYWwgLT4gdHRwX3Rlcm1pbmFsICJUZXJtaW5hbCBhY3Rpb25zIiBIdHRwcwogICAgICAgIHR0cF90ZXJtaW5hbCAtPiBpbmdyZXNzX3Rlcm1pbmFsICJGZXRjaCB3aW5uaW5ncyIgSHR0cHMKCiAgICAgICAgb3BlcmF0b3IgLT4gaW5ncmVzc19vcGVyYXRvciAiT3BlcmF0b3IgYWN0aW9ucyIgSHR0cHMKICAgICAgICBpbmdyZXNzX29wZXJhdG9yIC0+IGltc19vcGVyYXRvciAiT3BlcmF0b3IgYWN0aW9ucyIgSHR0cHMKICAgICAgICBpbmdyZXNzX29wZXJhdG9yIC0+IHR0cF9vcGVyYXRvciAiT3BlcmF0b3IgYWN0aW9ucyIgSHR0cHMKCiAgICAgICAgaW1zX3Rlcm1pbmFsIC0+IGVncmVzc19wb3N0Z3JlcXNsICJEYXRhIHBlcnNpc3RlbmNlIgogICAgICAgIHR0cF90ZXJtaW5hbCAtPiBlZ3Jlc3NfcG9zdGdyZXFzbCAiRGF0YSBwZXJzaXN0ZW5jZSIKICAgICAgICBpbXNfb3BlcmF0b3IgLT4gZWdyZXNzX3Bvc3RncmVxc2wgIkRhdGEgcGVyc2lzdGVuY2UiCiAgICAgICAgdHRwX29wZXJhdG9yIC0+IGVncmVzc19wb3N0Z3JlcXNsICJEYXRhIHBlcnNpc3RlbmNlIgoKICAgICAgICBkZWJleml1bSAtPiBlZ3Jlc3NfcG9zdGdyZXFzbCAiUmVwbGljYXRpb24iIFRDUC9UTFMKICAgICAgICBlZ3Jlc3NfcG9zdGdyZXFzbCAtPiBkYXRhYmFzZSAiUmVhZC9Xcml0ZSBhY2Nlc3MiIFRDUC9UTFMKICAgICAgICBkZWJleml1bSAtPiBrYWZrYSAiUHVzaCBldmVudHMiIEh0dHBzCgogICAgICAgIGltc190ZXJtaW5hbCAtPiBlZ3Jlc3NfdGVybWluYWwgIlVwZGF0ZSBsaW1pdHMiIEh0dHBzCiAgICAgICAgdHRwX3Rlcm1pbmFsIC0+IGVncmVzc190ZXJtaW5hbCAiVXBkYXRlIGxpbWl0cyIgSHR0cHMKICAgICAgICBlZ3Jlc3NfdGVybWluYWwgLT4gaXRtc19wbGF0Zm9ybV9yZXRhaWwgIlVwZGF0ZSBsaW1pdHMiIEh0dHBzCgogICAgICAgIGltc19vcGVyYXRvciAtPiBlZ3Jlc3Nfb3BlcmF0b3IgIlVwZGF0ZSBsaW1pdHMiIEh0dHBzCiAgICAgICAgdHRwX29wZXJhdG9yIC0+IGVncmVzc19vcGVyYXRvciAiVXBkYXRlIGxpbWl0cyIgSHR0cHMKICAgICAgICBlZ3Jlc3Nfb3BlcmF0b3IgLT4gaXRtc19wbGF0Zm9ybV9yZXRhaWwgIlVwZGF0ZSBsaW1pdHMiIEh0dHBzCgoKICAgICAgICBpbXNfb3BlcmF0b3IgLT4gZWdyZXNzX3MzICJSZWFkIGdhbWUgY29uZmlndXJhdGlvbiIgSHR0cHMKICAgICAgICBlZ3Jlc3NfczMgLT4gczMgIlJlYWQgZ2FtZSBjb25maWd1cmF0aW9uIiBIdHRwcwoKICAgICAgICBrYWZrYSAtPiBlZ3Jlc3NfYXVkaXQgIkF1ZGl0IHJlcGxpY2F0aW9uIiBUQ1AvVExTCiAgICAgICAgZWdyZXNzX2F1ZGl0IC0+IGF1ZGl0X3N0b3JlICJBdWRpdCByZXBsaWNhdGlvbiIgVENQL1RMUwoKICAgICAgICBrYWZrYSAtPiBlZ3Jlc3NfZGF0YSAiUmVwbGljYXRpb24gZGF0YSIgVENQL1RMUwogICAgICAgIGVncmVzc19kYXRhIC0+IGRhdGEgIlJlcGxpY2F0aW9uIGRhdGEiIFRDUC9UTFMKCiAgICAgICAgaURlY2lkZSAtPiBpbmdyZXNzX2lEZWNpZGUgImlEZWNpZGUgYXV0aGVudGljYXRpb24vdmFsaWRhdGUvbG9jay9wYWlkIiBIdHRwcwogICAgICAgIGluZ3Jlc3NfaURlY2lkZSAtPiB0dHBfdGVybWluYWwgImlEZWNpZGUgdmFsaWRhdGUvbG9jay9wYWlkIiBIdHRwcwoKICAgICAgICBvcGVyYXRvciAtPiBva3RhICJBdXRoZW50aWZpY2F0aW9uIiBIdHRwcwogICAgICAgIGltc19vcGVyYXRvciAtPiBlZ3Jlc3Nfb2t0YSAiVG9rZW4gdmFsaWRhdGlvbiIgSHR0cHMKICAgICAgICB0dHBfb3BlcmF0b3IgLT4gZWdyZXNzX29rdGEgIlRva2VuIHZhbGlkYXRpb24iIEh0dHBzCiAgICAgICAgZWdyZXNzX29rdGEgLT4gb2t0YSAiVG9rZW4gdmFsaWRhdGlvbiIgSHR0cHMKCiAgICAgICAgaW5ncmVzc19pRGVjaWRlIC0+IGtleWNsb2FrICJBdXRoZW50aWZpY2F0aW9uIiBIdHRwcwogICAgICAgIHR0cF90ZXJtaW5hbCAtPiBrZXljbG9hayAiaURlY2lkZSBUb2tlbiB2YWxpZGF0aW9uIiBIdHRwcwogICAgfQogICAgdmlld3MgewoKICAgICAgICBzeXN0ZW1Db250ZXh0IGl0bXNfcGxhdGZvcm1fbW90ZXVyIGl0bXNfcGxhdGZvcm1fbW90ZXVyX2NvbnRleHRfdmlldyAiRm9jdXMgb24gSVRNUyBwbGF0Zm9ybSIgewogICAgICAgICAgICB0aXRsZSAiU3lzdGVtIGNvbnRleHQgdmlldyAtIFRoZSBJVE1TIHBsYXRmb3JtIGFuZCBsaW5rcyB3aXRoIGV4dGVybmFsIHN5c3RlbXMuIgogICAgICAgICAgICBkZXNjcmlwdGlvbiAiVGhpcyBkaWFncmFtIHNob3dzIHRoZSBsaW5rcyBiZXR3ZWVuIGFsbCB0aGUgc3lzdGVtcyB0aGF0IGludGVyYWN0IHdpdGggdGhlIElUTVMgcGxhdGZvcm0uIgogICAgICAgICAgICBkZWZhdWx0CgogICAgICAgICAgICBpbmNsdWRlICoKICAgICAgICB9CgogICAgICAgIGNvbnRhaW5lciBpdG1zX3BsYXRmb3JtX21vdGV1ciAwMV9pdG1zX3BsYXRmb3JtX21vdGV1cl9hbGxfdmlldyB7CiAgICAgICAgICAgIHRpdGxlICJBbGwKICAgICAgICAgICAgZGVzY3JpcHRpb24gIkFsbCIKCiAgICAgICAgICAgIGluY2x1ZGUgKgogICAgICAgIH0KCiAgICAgICAgc3R5bGVzIHsKICAgICAgICAgICAgZWxlbWVudCAiZGF0YWJhc2UiIHsKICAgICAgICAgICAgICAgIGJhY2tncm91bmQgIzZGQkZFMgogICAgICAgICAgICAgICAgc2hhcGUgY3lsaW5kZXIKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAiczMiIHsKICAgICAgICAgICAgICAgIGJhY2tncm91bmQgIzAwNjlEOQogICAgICAgICAgICAgICAgc2hhcGUgZm9sZGVyCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGVsZW1lbnQgIm9rdGEiIHsKICAgICAgICAgICAgICAgIGJhY2tncm91bmQgIzAwOThkOAogICAgICAgICAgICAgICAgc2hhcGUgZm9sZGVyCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGVsZW1lbnQgImthZmthIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICNDMUIwRTUKICAgICAgICAgICAgICAgIHNoYXBlIHBpcGUKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAidGVybWluYWwiIHsKICAgICAgICAgICAgICAgIGJhY2tncm91bmQgI0ZGQTY5RQogICAgICAgICAgICB9CgogICAgICAgICAgICBlbGVtZW50ICJkYXRhIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICM3QjUyRDQKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAidGVybWluYWxfYWN0b3IiIHsKICAgICAgICAgICAgICAgIHNoYXBlIHdlYmJyb3dzZXIKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAib3BlcmF0b3JfYWN0b3IiIHsKICAgICAgICAgICAgICAgIGJhY2tncm91bmQgI0E5RjBEMQogICAgICAgICAgICAgICAgc2hhcGUgcGVyc29uCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGVsZW1lbnQgIm9wZXJhdG9yIiB7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kICNBOUYwRDEKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAiaURlY2lkZSIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjRjNERThBCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIGVsZW1lbnQgInJldGFpbCIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjOEM1RTU4CiAgICAgICAgICAgICAgICBzaGFwZSBmb2xkZXIKICAgICAgICAgICAgfQoKICAgICAgICAgICAgZWxlbWVudCAiY29tcG9uZW50InsKICAgICAgICAgICAgICAgIHNoYXBlIGNvbXBvbmVudAogICAgICAgICAgICB9CgogICAgICAgICAgICBlbGVtZW50ICJhdWRpdF9zdG9yZSIgewogICAgICAgICAgICAgICAgYmFja2dyb3VuZCAjN0U3RjlBCiAgICAgICAgICAgIH0KICAgICAgICB9CgogICAgfQp9"
+  },
+  "views" : {
+    "configuration" : {
+      "branding" : { },
+      "defaultView" : "itms_platform_moteur_context_view",
+      "lastSavedView" : "01_itms_platform_moteur_all_view",
+      "metadataSymbols" : "SquareBrackets",
+      "styles" : {
+        "elements" : [ {
+          "background" : "#6fbfe2",
+          "shape" : "Cylinder",
+          "tag" : "database"
+        }, {
+          "background" : "#0069d9",
+          "shape" : "Folder",
+          "tag" : "s3"
+        }, {
+          "background" : "#0098d8",
+          "shape" : "Folder",
+          "tag" : "okta"
+        }, {
+          "background" : "#c1b0e5",
+          "shape" : "Pipe",
+          "tag" : "kafka"
+        }, {
+          "background" : "#ffa69e",
+          "tag" : "terminal"
+        }, {
+          "background" : "#7b52d4",
+          "tag" : "data"
+        }, {
+          "shape" : "WebBrowser",
+          "tag" : "terminal_actor"
+        }, {
+          "background" : "#a9f0d1",
+          "shape" : "Person",
+          "tag" : "operator_actor"
+        }, {
+          "background" : "#a9f0d1",
+          "tag" : "operator"
+        }, {
+          "background" : "#f3de8a",
+          "tag" : "iDecide"
+        }, {
+          "background" : "#8c5e58",
+          "shape" : "Folder",
+          "tag" : "retail"
+        }, {
+          "shape" : "Component",
+          "tag" : "component"
+        }, {
+          "background" : "#7e7f9a",
+          "tag" : "audit_store"
+        } ]
+      },
+      "terminology" : { }
+    },
+    "containerViews" : [ {
+      "description" : "All",
+      "dimensions" : {
+        "height" : 3298,
+        "width" : 5555
+      },
+      "elements" : [ {
+        "id" : "1",
+        "x" : 199,
+        "y" : 927
+      }, {
+        "id" : "2",
+        "x" : 215,
+        "y" : 2616
+      }, {
+        "id" : "3",
+        "x" : 199,
+        "y" : 1432
+      }, {
+        "id" : "4",
+        "x" : 199,
+        "y" : 172
+      }, {
+        "id" : "5",
+        "x" : 180,
+        "y" : 1900
+      }, {
+        "id" : "6",
+        "x" : 4709,
+        "y" : 1710
+      }, {
+        "id" : "7",
+        "x" : 4709,
+        "y" : 1211
+      }, {
+        "id" : "8",
+        "x" : 4709,
+        "y" : 2175
+      }, {
+        "id" : "9",
+        "x" : 4709,
+        "y" : 2666
+      }, {
+        "id" : "11",
+        "x" : 1780,
+        "y" : 155
+      }, {
+        "id" : "12",
+        "x" : 1759,
+        "y" : 2666
+      }, {
+        "id" : "13",
+        "x" : 964,
+        "y" : 927
+      }, {
+        "id" : "14",
+        "x" : 964,
+        "y" : 172
+      }, {
+        "id" : "15",
+        "x" : 3894,
+        "y" : 673
+      }, {
+        "id" : "16",
+        "x" : 945,
+        "y" : 1900
+      }, {
+        "id" : "17",
+        "x" : 3894,
+        "y" : 1211
+      }, {
+        "id" : "18",
+        "x" : 964,
+        "y" : 1432
+      }, {
+        "id" : "19",
+        "x" : 3894,
+        "y" : 2666
+      }, {
+        "id" : "20",
+        "x" : 3894,
+        "y" : 2175
+      }, {
+        "id" : "21",
+        "x" : 3894,
+        "y" : 177
+      }, {
+        "id" : "22",
+        "x" : 955,
+        "y" : 2666
+      }, {
+        "id" : "23",
+        "x" : 1759,
+        "y" : 1655
+      }, {
+        "id" : "24",
+        "x" : 1759,
+        "y" : 1155
+      }, {
+        "id" : "25",
+        "x" : 1759,
+        "y" : 2155
+      }, {
+        "id" : "26",
+        "x" : 1759,
+        "y" : 655
+      }, {
+        "id" : "27",
+        "x" : 3894,
+        "y" : 1710
+      }, {
+        "id" : "28",
+        "x" : 3195,
+        "y" : 1215
+      } ],
+      "externalSoftwareSystemBoundariesVisible" : false,
+      "key" : "01_itms_platform_moteur_all_view",
+      "order" : 2,
+      "relationships" : [ {
+        "id" : "29"
+      }, {
+        "id" : "30"
+      }, {
+        "id" : "32"
+      }, {
+        "id" : "33",
+        "vertices" : [ {
+          "x" : 1984,
+          "y" : 1126
+        } ]
+      }, {
+        "id" : "34"
+      }, {
+        "id" : "35"
+      }, {
+        "id" : "37"
+      }, {
+        "id" : "38"
+      }, {
+        "id" : "39",
+        "vertices" : [ {
+          "x" : 2790,
+          "y" : 1735
+        } ]
+      }, {
+        "id" : "40",
+        "vertices" : [ {
+          "x" : 2490,
+          "y" : 1410
+        } ]
+      }, {
+        "id" : "41",
+        "vertices" : [ {
+          "x" : 2510,
+          "y" : 2185
+        }, {
+          "x" : 3545,
+          "y" : 2205
+        } ]
+      }, {
+        "id" : "42"
+      }, {
+        "id" : "43",
+        "position" : 45
+      }, {
+        "id" : "44",
+        "position" : 45
+      }, {
+        "id" : "46"
+      }, {
+        "id" : "47"
+      }, {
+        "id" : "48"
+      }, {
+        "id" : "49",
+        "vertices" : [ {
+          "x" : 5274,
+          "y" : 971
+        }, {
+          "x" : 5274,
+          "y" : 2480
+        } ]
+      }, {
+        "id" : "51",
+        "vertices" : [ {
+          "x" : 2550,
+          "y" : 2605
+        } ]
+      }, {
+        "id" : "52",
+        "vertices" : [ {
+          "x" : 2405,
+          "y" : 2785
+        } ]
+      }, {
+        "id" : "53"
+      }, {
+        "id" : "54"
+      }, {
+        "id" : "55"
+      }, {
+        "id" : "57"
+      }, {
+        "id" : "58"
+      }, {
+        "id" : "60"
+      }, {
+        "id" : "61"
+      }, {
+        "id" : "63"
+      }, {
+        "id" : "65"
+      }, {
+        "id" : "66"
+      }, {
+        "id" : "67"
+      }, {
+        "id" : "68",
+        "vertices" : [ {
+          "x" : 1590,
+          "y" : 2050
+        } ]
+      }, {
+        "id" : "69"
+      }, {
+        "id" : "71"
+      }, {
+        "id" : "72"
+      } ],
+      "softwareSystemId" : "10",
+      "title" : "All"
+    } ],
+    "systemContextViews" : [ {
+      "description" : "This diagram shows the links between all the systems that interact with the ITMS platform.",
+      "dimensions" : {
+        "height" : 2016,
+        "width" : 4616
+      },
+      "elements" : [ {
+        "id" : "1",
+        "x" : 1612,
+        "y" : 258
+      }, {
+        "id" : "2",
+        "x" : 721,
+        "y" : 208
+      }, {
+        "id" : "3",
+        "x" : 958,
+        "y" : 1508
+      }, {
+        "id" : "4",
+        "x" : 2362,
+        "y" : 258
+      }, {
+        "id" : "5",
+        "x" : 208,
+        "y" : 1508
+      }, {
+        "id" : "6",
+        "x" : 1708,
+        "y" : 1508
+      }, {
+        "id" : "7",
+        "x" : 2458,
+        "y" : 1508
+      }, {
+        "id" : "8",
+        "x" : 3208,
+        "y" : 1508
+      }, {
+        "id" : "9",
+        "x" : 3958,
+        "y" : 1508
+      }, {
+        "id" : "10",
+        "x" : 1708,
+        "y" : 908
+      } ],
+      "enterpriseBoundaryVisible" : true,
+      "key" : "itms_platform_moteur_context_view",
+      "order" : 1,
+      "paperSize" : "A3_Landscape",
+      "relationships" : [ {
+        "id" : "31"
+      }, {
+        "id" : "36"
+      }, {
+        "id" : "45"
+      }, {
+        "id" : "50",
+        "vertices" : [ {
+          "x" : 3808,
+          "y" : 1508
+        } ]
+      }, {
+        "id" : "56"
+      }, {
+        "id" : "59"
+      }, {
+        "id" : "62"
+      }, {
+        "id" : "64"
+      }, {
+        "id" : "66"
+      }, {
+        "id" : "70"
+      } ],
+      "softwareSystemId" : "10",
+      "title" : "System context view - The ITMS platform and links with external systems."
+    } ]
+  }
+}
