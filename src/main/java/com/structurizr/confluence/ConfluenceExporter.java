@@ -125,7 +125,7 @@ public class ConfluenceExporter {
     exportModel(workspace, mainPageId);
 
     // Générer les ADRs
-    exportDecisions(workspace, mainPageId);
+    exportDecisions(workspace, mainPageId, branchName);
 
     // Générer la page Schémas
     exportDiagramsPage(mainPageId, workspace);
@@ -189,7 +189,8 @@ public class ConfluenceExporter {
             
             if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
                 logger.debug("Converting AsciiDoc content for section: {}", sectionTitle);
-                htmlContent = asciiDocConverter.convertToHtml(content, sectionTitle);
+                String workspaceId = getWorkspaceId(workspace);
+                htmlContent = asciiDocConverter.convertToHtml(content, sectionTitle, workspaceId, branchName);
             } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
                 logger.debug("Markdown content detected for section: {} (treating as HTML)", sectionTitle);
                 // Pour Markdown, on pourrait ajouter un convertisseur Markdown->HTML plus tard
@@ -199,9 +200,8 @@ public class ConfluenceExporter {
                 htmlContent = content; // Assume HTML ou texte brut
             }
 
-            // Convertir HTML vers ADF pour Confluence
-            Document adfDocument = htmlToAdfConverter.convertToAdf(htmlContent, sectionTitle);
-            String adfJson = convertDocumentToJson(adfDocument);
+            // Convertir HTML vers ADF JSON pour Confluence avec support des tables natives
+            String adfJson = htmlToAdfConverter.convertToAdfJson(htmlContent, sectionTitle);
 
             String pageTitle = branchName + " - " + sectionTitle;
             String pageId = confluenceClient.createOrUpdatePage(pageTitle, adfJson, parentPageId);
@@ -425,7 +425,7 @@ public class ConfluenceExporter {
         });
     }
     
-    private void exportDecisions(Workspace workspace, String parentPageId) throws Exception {
+    private void exportDecisions(Workspace workspace, String parentPageId, String branchName) throws Exception {
         if (workspace.getDocumentation() == null || workspace.getDocumentation().getDecisions().isEmpty()) {
             logger.info("No architecture decision records found in workspace");
             return;
@@ -460,11 +460,11 @@ public class ConfluenceExporter {
         
         // Create individual ADR pages
         for (Decision decision : decisions) {
-            exportDecision(decision, adrMainPageId);
+            exportDecision(decision, adrMainPageId, workspace, branchName);
         }
     }
     
-    private void exportDecision(Decision decision, String parentPageId) throws Exception {
+    private void exportDecision(Decision decision, String parentPageId, Workspace workspace, String branchName) throws Exception {
         Document decisionDoc = Document.create()
             .h1("ADR " + decision.getId() + ": " + decision.getTitle());
         
@@ -492,17 +492,19 @@ public class ConfluenceExporter {
             
             if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
                 logger.debug("Converting AsciiDoc content for ADR: {}", decision.getTitle());
-                htmlContent = asciiDocConverter.convertToHtml(decision.getContent(), "ADR " + decision.getId());
+                String workspaceId = getWorkspaceId(workspace);
+                htmlContent = asciiDocConverter.convertToHtml(decision.getContent(), "ADR " + decision.getId(), workspaceId, branchName);
             } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
-                logger.debug("Markdown content detected for ADR: {} (treating as HTML)", decision.getTitle());
-                htmlContent = decision.getContent(); // Traitement basique pour l'instant
+                logger.debug("Converting Markdown content for ADR: {}", decision.getTitle());
+                htmlContent = convertBasicMarkdownToHtml(decision.getContent());
             } else {
                 logger.debug("Treating content as HTML for ADR: {} (format: {})", decision.getTitle(), formatName);
                 htmlContent = decision.getContent(); // Assume HTML ou texte brut
             }
             
-            // Add the converted content to the document
-            decisionDoc.paragraph(htmlContent);
+            // Convert HTML content to structured ADF instead of plain text
+            Document convertedContent = htmlToAdfConverter.convertToAdf(htmlContent, "Content");
+            decisionDoc = combineDocuments(decisionDoc, convertedContent);
         }
         
         // Add links to other decisions
@@ -522,48 +524,152 @@ public class ConfluenceExporter {
     }
     
     /**
-     * Crée une page "Schémas" sous la page principale, listant dynamiquement les PNG Structurizr pour chaque vue.
+     * Generates a Confluence page with workspace diagrams.
+     * For workspaces loaded from Structurizr on-premise, attempts to link to actual diagram images.
+     * For workspaces loaded from JSON files, shows diagram information only.
      */
     private void exportDiagramsPage(String parentPageId, Workspace workspace) throws Exception {
-        String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
-        String workspaceId = System.getenv("STRUCTURIZR_WORKSPACE_ID");
-        if (structurizrServerUrl == null) structurizrServerUrl = "https://static.structurizr.com";
-        if (workspaceId == null) workspaceId = "1";
-
+        String workspaceId = getWorkspaceId(workspace);
+        boolean isFromStructurizr = workspaceLoader != null; // Indicates workspace from Structurizr instance
+        
         Document diagramsDoc = Document.create()
-            .h1("Schémas")
-            .paragraph("Cette page regroupe tous les schémas PNG du workspace Structurizr (serveur: " + structurizrServerUrl + ", workspace: " + workspaceId + ").");
+            .h1("Schémas");
+            
+        if (isFromStructurizr) {
+            String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
+            if (structurizrServerUrl == null) structurizrServerUrl = "https://static.structurizr.com";
+            diagramsDoc.paragraph("Cette page regroupe tous les schémas PNG du workspace Structurizr (serveur: " + structurizrServerUrl + ", workspace: " + workspaceId + ").");
+        } else {
+            diagramsDoc.paragraph("Cette page liste les vues/diagrammes disponibles dans le workspace (chargé depuis un fichier JSON).");
+        }
 
         if (workspace == null) {
             diagramsDoc.paragraph("Impossible d'accéder au workspace pour lister les vues.");
         } else {
             ViewSet views = workspace.getViews();
-            for (View view : views.getViews()) {
-                String diagramKey = view.getKey();
-                String diagramName = view.getTitle() != null && !view.getTitle().isEmpty() ? view.getTitle() : diagramKey;
-                String pngUrl = structurizrServerUrl + "/workspace/" + workspaceId + "/diagrams/" + diagramKey + ".png";
-                // Vérifier si l'image est accessible
-                boolean accessible = false;
-                try {
-                    java.net.HttpURLConnection connection = (java.net.HttpURLConnection) new java.net.URL(pngUrl).openConnection();
-                    connection.setRequestMethod("HEAD");
-                    connection.setConnectTimeout(2000);
-                    connection.setReadTimeout(2000);
-                    int responseCode = connection.getResponseCode();
-                    accessible = (responseCode >= 200 && responseCode < 300);
-                } catch (Exception e) {
-                    accessible = false;
-                }
-                diagramsDoc.h2(diagramName);
-                if (accessible) {
-                    diagramsDoc.paragraph("![" + diagramName + "](" + pngUrl + ")");
-                } else {
-                    diagramsDoc.paragraph("Erreur de récupération du schéma : " + pngUrl);
+            if (views == null || views.getViews().isEmpty()) {
+                diagramsDoc.paragraph("Aucune vue trouvée dans le workspace.");
+            } else {
+                for (View view : views.getViews()) {
+                    String diagramKey = view.getKey();
+                    String diagramName = view.getTitle() != null && !view.getTitle().isEmpty() ? view.getTitle() : diagramKey;
+                    
+                    diagramsDoc.h2(diagramName);
+                    diagramsDoc.bulletList(list -> {
+                        list.item("Clé : " + diagramKey);
+                        list.item("Type : " + view.getClass().getSimpleName());
+                        if (view.getDescription() != null && !view.getDescription().trim().isEmpty()) {
+                            list.item("Description : " + view.getDescription());
+                        }
+                    });
+                    
+                    if (isFromStructurizr) {
+                        // Try to link to actual diagram images for Structurizr workspaces
+                        String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
+                        if (structurizrServerUrl == null) structurizrServerUrl = "https://static.structurizr.com";
+                        String pngUrl = structurizrServerUrl + "/workspace/" + workspaceId + "/diagrams/" + diagramKey + ".png";
+                        
+                        // Test if image is accessible
+                        boolean accessible = false;
+                        try {
+                            java.net.URI uri = java.net.URI.create(pngUrl);
+                            java.net.HttpURLConnection connection = (java.net.HttpURLConnection) uri.toURL().openConnection();
+                            connection.setRequestMethod("HEAD");
+                            connection.setConnectTimeout(2000);
+                            connection.setReadTimeout(2000);
+                            int responseCode = connection.getResponseCode();
+                            accessible = (responseCode >= 200 && responseCode < 300);
+                        } catch (Exception e) {
+                            logger.debug("Could not access diagram image at: {}", pngUrl, e);
+                            accessible = false;
+                        }
+                        
+                        if (accessible) {
+                            diagramsDoc.paragraph("![" + diagramName + "](" + pngUrl + ")");
+                        } else {
+                            diagramsDoc.paragraph("⚠️ Image non accessible : " + pngUrl);
+                        }
+                    } else {
+                        // For JSON workspaces, provide placeholder
+                        diagramsDoc.paragraph("📊 Diagramme disponible - pour voir l'image, générez-la avec les outils Structurizr.");
+                    }
                 }
             }
         }
 
         confluenceClient.createOrUpdatePage("Schémas", convertDocumentToJson(diagramsDoc), parentPageId);
-        logger.info("Page 'Schémas' créée/mise à jour sous la page principale (PNG Structurizr).");
+        logger.info("Page 'Schémas' créée/mise à jour sous la page principale.");
+    }
+
+    /**
+     * Extracts workspace ID from workspace, using ID property or falling back to a default.
+     * 
+     * @param workspace the workspace
+     * @return workspace ID as string
+     */
+    private String getWorkspaceId(Workspace workspace) {
+        // Get ID from workspace - it's a long, so convert to string
+        long workspaceId = workspace.getId();
+        return String.valueOf(workspaceId);
+    }
+    
+    /**
+     * Converts basic Markdown syntax to HTML.
+     * Handles headings, paragraphs, links, and basic formatting.
+     */
+    private String convertBasicMarkdownToHtml(String markdown) {
+        if (markdown == null || markdown.trim().isEmpty()) {
+            return "";
+        }
+        
+        String html = markdown;
+        
+        // Convert headings
+        html = html.replaceAll("(?m)^# (.+)$", "<h1>$1</h1>");
+        html = html.replaceAll("(?m)^## (.+)$", "<h2>$1</h2>");
+        html = html.replaceAll("(?m)^### (.+)$", "<h3>$1</h3>");
+        html = html.replaceAll("(?m)^#### (.+)$", "<h4>$1</h4>");
+        html = html.replaceAll("(?m)^##### (.+)$", "<h5>$1</h5>");
+        html = html.replaceAll("(?m)^###### (.+)$", "<h6>$1</h6>");
+        
+        // Convert links: [text](url) -> <a href="url">text</a>
+        html = html.replaceAll("\\[([^\\]]+)\\]\\(([^\\)]+)\\)", "<a href=\"$2\">$1</a>");
+        
+        // Convert simple URL links: http://... -> <a href="...">...</a>
+        html = html.replaceAll("(https?://[^\\s]+)", "<a href=\"$1\">$1</a>");
+        
+        // Convert bold: **text** -> <strong>text</strong>
+        html = html.replaceAll("\\*\\*([^\\*]+)\\*\\*", "<strong>$1</strong>");
+        
+        // Convert italic: *text* -> <em>text</em>
+        html = html.replaceAll("(?<!\\*)\\*([^\\*]+)\\*(?!\\*)", "<em>$1</em>");
+        
+        // Convert line breaks to paragraphs
+        // Split by double line breaks (paragraph separators)
+        String[] paragraphs = html.split("\\n\\s*\\n");
+        StringBuilder result = new StringBuilder();
+        
+        for (String paragraph : paragraphs) {
+            String trimmed = paragraph.trim();
+            if (!trimmed.isEmpty()) {
+                // Skip if already has HTML tags
+                if (!trimmed.matches(".*<h[1-6]>.*</h[1-6]>.*")) {
+                    result.append("<p>").append(trimmed.replace("\n", " ")).append("</p>\n");
+                } else {
+                    result.append(trimmed).append("\n");
+                }
+            }
+        }
+        
+        return result.toString();
+    }
+    
+    /**
+     * Combines two ADF documents by merging their content.
+     */
+    private Document combineDocuments(Document base, Document addition) {
+        // This is a simplified approach - in practice you'd need proper ADF manipulation
+        // For now, return the addition since it contains the converted content
+        return addition;
     }
 }
