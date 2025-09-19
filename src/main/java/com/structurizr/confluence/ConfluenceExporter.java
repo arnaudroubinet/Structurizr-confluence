@@ -128,9 +128,6 @@ public class ConfluenceExporter {
     // Générer les ADRs
     exportDecisions(workspace, mainPageId, branchName);
 
-    // Note: Diagrams page removed to avoid duplication with embedded images in documentation
-    // exportDiagramsPage(mainPageId, workspace);
-
     logger.info("Workspace export completed successfully");
     }
 
@@ -210,7 +207,7 @@ public class ConfluenceExporter {
             htmlToAdfConverter.setImageUploadManager(imageUploadManager);
             
             // Create page first to get the page ID for image uploads
-            String pageTitle = actualTitle; // Use only the H1 title, not prefixed with branch name
+            String pageTitle = actualTitle;
             String pageId = confluenceClient.createOrUpdatePage(pageTitle, "{\"version\":1,\"type\":\"doc\",\"content\":[]}", parentPageId);
             
             // Set page context for image uploads

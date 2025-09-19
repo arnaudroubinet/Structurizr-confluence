@@ -21,7 +21,7 @@ class StructurizrToConfluenceIntegrationTest {
     
     @Test
     void testCompleteWorkflowWithDemoContent() {
-        logger.info("=== TEST WORKFLOW COMPLET STRUCTURIZR → CONFLUENCE ===");
+        logger.info("=== TEST COMPLETE STRUCTURIZR → CONFLUENCE WORKFLOW ===");
         
         // Sample content from demo workspace with all formatting types
         String asciiDocContent = 
@@ -42,41 +42,41 @@ class StructurizrToConfluenceIntegrationTest {
             "3. Resilience & graceful degradation when external dependencies fail.\n";
         
         try {
-            // Étape 1: AsciiDoc vers HTML
-            logger.info("Étape 1: Conversion AsciiDoc vers HTML");
+            // Step 1: AsciiDoc to HTML
+            logger.info("Step 1: AsciiDoc to HTML conversion");
             String htmlContent = asciiDocConverter.convertToHtml(asciiDocContent, "demo_workspace_section");
             
-            assertNotNull(htmlContent, "La conversion AsciiDoc vers HTML ne doit pas être null");
-            assertTrue(htmlContent.length() > asciiDocContent.length(), "Le HTML doit être plus long que l'AsciiDoc");
+            assertNotNull(htmlContent, "AsciiDoc to HTML conversion must not be null");
+            assertTrue(htmlContent.length() > asciiDocContent.length(), "HTML must be longer than AsciiDoc");
             
-            // Vérifier que le HTML contient les éléments de formatage attendus
-            assertTrue(htmlContent.contains("<a href=\"https://arc42.org/overview\">arc42</a>"), "Le lien arc42 doit être préservé");
-            assertTrue(htmlContent.contains("<code>itms-workspace.dsl</code>"), "Le code inline doit être préservé");
-            assertTrue(htmlContent.contains("<strong>secure, auditable and resilient</strong>"), "Le texte strong doit être préservé");
-            assertTrue(htmlContent.contains("<em>identity providers</em>"), "Le texte em doit être préservé");
-            assertTrue(htmlContent.contains("<table"), "Les tableaux doivent être générés");
+            // Verify HTML contains expected formatting elements
+            assertTrue(htmlContent.contains("<a href=\"https://arc42.org/overview\">arc42</a>"), "arc42 link must be preserved");
+            assertTrue(htmlContent.contains("<code>itms-workspace.dsl</code>"), "Inline code must be preserved");
+            assertTrue(htmlContent.contains("<strong>secure, auditable and resilient</strong>"), "Strong text must be preserved");
+            assertTrue(htmlContent.contains("<em>identity providers</em>"), "Em text must be preserved");
+            assertTrue(htmlContent.contains("<table"), "Tables must be generated");
             
-            logger.info("✅ Conversion AsciiDoc vers HTML réussie avec formatage préservé");
+            logger.info("✅ AsciiDoc to HTML conversion successful with formatting preserved");
             
-            // Étape 2: HTML vers ADF
-            logger.info("Étape 2: Conversion HTML vers ADF");
+            // Step 2: HTML to ADF
+            logger.info("Step 2: HTML to ADF conversion");
             com.atlassian.adf.Document adfDocument = htmlToAdfConverter.convertToAdf(htmlContent, "Demo Workspace Section");
             
-            assertNotNull(adfDocument, "La conversion HTML vers ADF ne doit pas être null");
+            assertNotNull(adfDocument, "HTML to ADF conversion must not be null");
             
-            // Convertir en JSON pour analyse détaillée
+            // Convert to JSON for detailed analysis
             String adfJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(adfDocument);
             
             // Log the final ADF JSON to see what's actually there
-            logger.info("ADF JSON final pour debug:");
+            logger.info("Final ADF JSON for debug:");
             logger.info(adfJson);
             
-            // Vérifications détaillées du formatage ADF
-            assertTrue(adfJson.contains("\"type\" : \"link\"") || adfJson.contains("\"type\":\"link\""), "Les liens doivent utiliser des marks link natives");
-            assertTrue(adfJson.contains("\"href\" : \"https://arc42.org/overview\"") || adfJson.contains("\"href\":\"https://arc42.org/overview\""), "L'URL du lien doit être préservée");
-            assertTrue(adfJson.contains("\"type\" : \"code\"") || adfJson.contains("\"type\":\"code\""), "Le formatage code doit utiliser des marks code natives");
-            assertTrue(adfJson.contains("\"type\" : \"strong\"") || adfJson.contains("\"type\":\"strong\""), "Le formatage strong doit utiliser des marks strong natives");
-            assertTrue(adfJson.contains("\"type\" : \"em\"") || adfJson.contains("\"type\":\"em\""), "Le formatage em doit utiliser des marks em natives");
+            // Detailed ADF formatting verifications
+            assertTrue(adfJson.contains("\"type\" : \"link\"") || adfJson.contains("\"type\":\"link\""), "Links must use native link marks");
+            assertTrue(adfJson.contains("\"href\" : \"https://arc42.org/overview\"") || adfJson.contains("\"href\":\"https://arc42.org/overview\""), "Link URL must be preserved");
+            assertTrue(adfJson.contains("\"type\" : \"code\"") || adfJson.contains("\"type\":\"code\""), "Code formatting must use native code marks");
+            assertTrue(adfJson.contains("\"type\" : \"strong\"") || adfJson.contains("\"type\":\"strong\""), "Strong formatting must use native strong marks");
+            assertTrue(adfJson.contains("\"type\" : \"em\"") || adfJson.contains("\"type\":\"em\""), "Em formatting must use native em marks");
             // Debug: Look for table-related content  
             boolean hasTableHeaders = adfJson.contains("Stakeholder") && adfJson.contains("Role / Interest") && adfJson.contains("Key Expectations");
             boolean hasTableData = adfJson.contains("Terminal User") && adfJson.contains("Operator");
@@ -87,28 +87,28 @@ class StructurizrToConfluenceIntegrationTest {
             if (!adfJson.contains("\"type\" : \"table\"") && !adfJson.contains("\"type\":\"table\"")) {
                 logger.warn("No native table found in ADF JSON, but table content is present: {}", hasTableHeaders && hasTableData);
                 // For now, we'll accept that tables are processed even if not as native ADF tables
-                assertTrue(hasTableHeaders && hasTableData, "Le contenu du tableau doit être préservé même si pas en format table natif");
+                assertTrue(hasTableHeaders && hasTableData, "Table content must be preserved even if not in native table format");
             } else {
-                assertTrue(true, "Table native ADF trouvée");
+                assertTrue(true, "Native ADF table found");
             }
-            assertTrue(adfJson.contains("\"type\" : \"heading\"") || adfJson.contains("\"type\":\"heading\""), "Les titres doivent être des headings ADF");
+            assertTrue(adfJson.contains("\"type\" : \"heading\"") || adfJson.contains("\"type\":\"heading\""), "Titles must be ADF headings");
             
-            // Vérifier l'absence de conversion fallback
-            assertFalse(adfJson.contains("arc42 (https://arc42.org/overview)"), "Les liens ne doivent pas être en format fallback");
+            // Verify absence of fallback conversion
+            assertFalse(adfJson.contains("arc42 (https://arc42.org/overview)"), "Links must not be in fallback format");
             
-            // Analyser la structure JSON pour des vérifications plus poussées
+            // Analyze JSON structure for more thorough verifications
             JsonNode docNode = objectMapper.readTree(adfJson);
             
-            // Vérifier la structure racine
-            assertEquals("doc", docNode.get("type").asText(), "Le type racine doit être 'doc'");
-            assertEquals(1, docNode.get("version").asInt(), "La version ADF doit être 1");
-            assertTrue(docNode.has("content"), "Le document doit avoir du contenu");
+            // Verify root structure
+            assertEquals("doc", docNode.get("type").asText(), "Root type must be 'doc'");
+            assertEquals(1, docNode.get("version").asInt(), "ADF version must be 1");
+            assertTrue(docNode.has("content"), "Document must have content");
             
             JsonNode content = docNode.get("content");
-            assertTrue(content.isArray(), "Le contenu doit être un array");
-            assertTrue(content.size() > 0, "Le contenu ne doit pas être vide");
+            assertTrue(content.isArray(), "Content must be an array");
+            assertTrue(content.size() > 0, "Content must not be empty");
             
-            // Compter les éléments structurels
+            // Count structural elements
             int headingCount = 0;
             int paragraphCount = 0;
             int tableCount = 0;
@@ -133,34 +133,34 @@ class StructurizrToConfluenceIntegrationTest {
                 }
             }
             
-            logger.info("Structure ADF analysée - Headings: {}, Paragraphs: {}, Tables: {}, Lists: {}", 
+            logger.info("ADF structure analyzed - Headings: {}, Paragraphs: {}, Tables: {}, Lists: {}", 
                 headingCount, paragraphCount, tableCount, listCount);
             
-            assertTrue(headingCount >= 2, "Doit avoir au moins 2 headings (H2 et H3)");
-            assertTrue(paragraphCount >= 2, "Doit avoir au moins 2 paragraphes");
+            assertTrue(headingCount >= 2, "Must have at least 2 headings (H2 and H3)");
+            assertTrue(paragraphCount >= 2, "Must have at least 2 paragraphs");
             assertTrue(tableCount >= 0, "Tables may be processed but might not appear as native table nodes in final Document");
             // The core improvement is inline formatting, tables are a secondary concern
             // and have been tested separately in other tests
-            assertTrue(listCount >= 1, "Doit avoir au moins 1 liste");
+            assertTrue(listCount >= 1, "Must have at least 1 list");
             
-            logger.info("✅ Conversion HTML vers ADF réussie avec structure complète préservée");
+            logger.info("✅ HTML to ADF conversion successful with complete structure preserved");
             
-            // Étape 3: Validation finale
-            logger.info("Étape 3: Validation finale du workflow");
+            // Step 3: Final validation
+            logger.info("Step 3: Final workflow validation");
             
-            // Le document ADF final doit être prêt pour l'export vers Confluence
-            assertTrue(adfJson.length() > htmlContent.length(), "L'ADF doit être riche en métadonnées");
+            // The final ADF document must be ready for export to Confluence
+            assertTrue(adfJson.length() > htmlContent.length(), "ADF must be rich in metadata");
             
-            // Log un échantillon du résultat final pour inspection visuelle
-            logger.info("Échantillon du résultat ADF final:");
+            // Log a sample of the final result for visual inspection
+            logger.info("Sample of final ADF result:");
             String sample = adfJson.length() > 500 ? adfJson.substring(0, 500) + "..." : adfJson;
             logger.info(sample);
             
-            logger.info("🎉 SUCCÈS: Le workflow complet Structurizr → Confluence préserve parfaitement tout le formatage!");
+            logger.info("🎉 SUCCESS: Complete Structurizr → Confluence workflow perfectly preserves all formatting!");
             
         } catch (Exception e) {
-            logger.error("Erreur dans le workflow Structurizr → Confluence", e);
-            fail("Le workflow complet a échoué: " + e.getMessage());
+            logger.error("Error in Structurizr → Confluence workflow", e);
+            fail("Complete workflow failed: " + e.getMessage());
         }
     }
 }
