@@ -1,6 +1,7 @@
 package com.structurizr.confluence.processor;
 
 import com.atlassian.adf.Document;
+import com.atlassian.adf.inline.Text;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -9,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
+
 import org.jsoup.select.Elements;
 
 import java.lang.reflect.Method;
@@ -119,8 +121,23 @@ public class HtmlToAdfConverter {
         logger.info("Converting HTML content to ADF JSON for document: {}", title);
         
         try {
+            // Extraire le titre de la page du contenu HTML (H1 en début de page en priorité)
+            TitleAndContent extracted = extractPageTitle(htmlContent);
+            
+            // Le H1 en début de page a la priorité absolue sur le titre fourni
+            String pageTitle = extracted.title != null ? extracted.title : title;
+            String contentWithoutTitle = extracted.content;
+            
+            if (extracted.title != null) {
+                logger.debug("Using H1 title from content: '{}', Content length: {}", pageTitle, 
+                    contentWithoutTitle != null ? contentWithoutTitle.length() : 0);
+            } else {
+                logger.debug("No H1 found, using provided title: '{}', Content length: {}", pageTitle, 
+                    contentWithoutTitle != null ? contentWithoutTitle.length() : 0);
+            }
+            
             // Create document without post-processing to avoid double processing
-            Document doc = convertToAdfWithoutPostProcessing(htmlContent, title);
+            Document doc = convertToAdfWithoutPostProcessing(contentWithoutTitle, pageTitle);
             
             // Convert to JSON
             String adfJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(doc);
@@ -157,12 +174,7 @@ public class HtmlToAdfConverter {
         try {
             Document doc = Document.create();
             
-            // Add title
-            if (title != null && !title.isEmpty()) {
-                doc = doc.h1(title);
-            }
-            
-            // Parse HTML content and convert to ADF
+            // Parse HTML content and convert to ADF (no title added - Confluence handles page titles)
             doc = processHtmlContent(doc, htmlContent);
             
             // Return without post-processing
@@ -223,12 +235,7 @@ public class HtmlToAdfConverter {
         try {
             Document doc = Document.create();
             
-            // Add main title
-            if (mainTitle != null && !mainTitle.isEmpty()) {
-                doc = doc.h1(mainTitle);
-            }
-            
-            // Process each section
+            // Process each section (no main title added - Confluence handles page titles)
             for (Map.Entry<String, String> section : sections.entrySet()) {
                 String sectionTitle = section.getKey();
                 String sectionContent = section.getValue();
@@ -453,9 +460,126 @@ public class HtmlToAdfConverter {
      * Processes a text block element (p, div, etc.) with inline formatting preserved.
      */
     private Document processTextBlock(Document doc, Element element) {
-        // Utiliser le texte simple pour éviter les problèmes de compilation
-        // TODO: Améliorer le formatage inline une fois l'API ADF mieux comprise
-        return doc.paragraph(getElementText(element));
+        // Nouvelle approche : détecter si le contenu a du formatage inline
+        if (hasInlineFormatting(element)) {
+            // Utiliser le formatage ADF natif avec marks
+            return processTextBlockWithNativeFormatting(doc, element);
+        }
+        
+        // Convertir le contenu du paragraphe en Markdown pour gérer les liens
+        String markdownContent = convertElementToMarkdown(element);
+        
+        if (!markdownContent.trim().isEmpty()) {
+            // CORRECTION: Détecter si le contenu contient des liens
+            if (containsLinks(markdownContent)) {
+                // Si le contenu contient des liens, utiliser une approche hybride
+                return addMarkdownContentToDocument(doc, markdownContent);
+            } else {
+                // Si pas de liens, utiliser paragraph() pour préserver l'accumulation
+                String textContent = cleanText(element.text());
+                return doc.paragraph(textContent);
+            }
+        }
+        return doc;
+    }
+    
+    /**
+     * Vérifie si le contenu markdown contient des liens.
+     */
+    private boolean containsLinks(String markdownContent) {
+        // Détection simple des liens markdown [text](url) ou des URLs directes
+        return markdownContent.contains("[") && markdownContent.contains("](") 
+            || markdownContent.contains("http://") 
+            || markdownContent.contains("https://");
+    }
+    
+    /**
+     * Ajoute le contenu markdown au document en préservant les liens.
+     * Utilise une approche hybride pour éviter la perte de contenu.
+     */
+    private Document addMarkdownContentToDocument(Document doc, String markdownContent) {
+        try {
+            // Pour l'instant, extraire les liens et les formater comme "text (url)"
+            // puis ajouter comme paragraphe simple
+            // TODO: Implémenter le support complet des liens ADF natifs
+            String processedContent = processLinksForFallback(markdownContent);
+            return doc.paragraph(processedContent);
+            
+        } catch (Exception e) {
+            logger.warn("Erreur lors du traitement des liens, utilisation du texte brut", e);
+            // Fallback vers le texte brut
+            return doc.paragraph(cleanText(markdownContent));
+        }
+    }
+    
+    /**
+     * Traite les liens markdown pour un affichage de secours lisible.
+     * Convertit [text](url) en "text (url)" pour préserver l'information.
+     */
+    private String processLinksForFallback(String markdownContent) {
+        // Remplacer les liens markdown [text](url) par "text (url)"
+        String processed = markdownContent.replaceAll("\\[([^\\]]+)\\]\\(([^\\)]+)\\)", "$1 ($2)");
+        
+        // Nettoyer le contenu
+        return cleanText(processed);
+    }
+    
+    /**
+     * Convertit un élément HTML en Markdown pour préserver les liens.
+     */
+    private String convertElementToMarkdown(Element element) {
+        StringBuilder markdown = new StringBuilder();
+        
+        for (org.jsoup.nodes.Node child : element.childNodes()) {
+            if (child instanceof org.jsoup.nodes.TextNode) {
+                // Nœud de texte direct - PRÉSERVER les espaces !
+                String text = ((org.jsoup.nodes.TextNode) child).text();
+                // Ne PAS nettoyer le texte pour préserver les espaces
+                markdown.append(text);
+            } else if (child instanceof Element) {
+                Element childElement = (Element) child;
+                String tagName = childElement.tagName().toLowerCase();
+                
+                if ("a".equals(tagName)) {
+                    // Convertir les liens en format Markdown [texte](url)
+                    String href = childElement.attr("href");
+                    String linkText = childElement.text(); // Ne pas nettoyer le texte du lien
+                    
+                    if (!href.isEmpty() && !linkText.isEmpty()) {
+                        markdown.append("[").append(linkText).append("](").append(href).append(")");
+                    } else if (!linkText.isEmpty()) {
+                        // Lien sans href - garder juste le texte
+                        markdown.append(linkText);
+                    }
+                } else if ("strong".equals(tagName) || "b".equals(tagName)) {
+                    // Texte en gras
+                    String text = childElement.text();
+                    if (!text.isEmpty()) {
+                        markdown.append("**").append(text).append("**");
+                    }
+                } else if ("em".equals(tagName) || "i".equals(tagName)) {
+                    // Texte en italique
+                    String text = childElement.text();
+                    if (!text.isEmpty()) {
+                        markdown.append("*").append(text).append("*");
+                    }
+                } else if ("code".equals(tagName)) {
+                    // Code inline
+                    String text = childElement.text();
+                    if (!text.isEmpty()) {
+                        markdown.append("`").append(text).append("`");
+                    }
+                } else {
+                    // Pour les autres éléments inline, garder le texte
+                    String text = childElement.text();
+                    if (!text.isEmpty()) {
+                        markdown.append(text);
+                    }
+                }
+            }
+        }
+        
+        return markdown.toString();
     }
     
     /**
@@ -563,13 +687,29 @@ public class HtmlToAdfConverter {
     private Document processNumberedList(Document doc, Element element) {
         Elements listItems = element.select("li");
         if (!listItems.isEmpty()) {
-            // Simple numbered list using bullet list with text numbers
-            return doc.bulletList(list -> {
-                for (int index = 0; index < listItems.size(); index++) {
-                    final int itemNumber = index + 1;
-                    Element li = listItems.get(index);
-                    String itemText = itemNumber + ". " + getElementText(li);
-                    list.item(item -> item.paragraph(itemText));
+            // Utiliser orderedList natif ADF au lieu de bulletList avec numéros manuels
+            return doc.orderedList(list -> {
+                for (Element li : listItems) {
+                    // Traiter le contenu de l'élément li
+                    if (hasInlineFormatting(li)) {
+                        // Traiter le formatage inline avec les marks natifs
+                        try {
+                            List<Text> textNodes = new ArrayList<>();
+                            for (org.jsoup.nodes.Node child : li.childNodes()) {
+                                textNodes.addAll(processNodeToTextNodes(child));
+                            }
+                            Text[] textArray = textNodes.toArray(new Text[0]);
+                            list.item(item -> item.paragraph(textArray));
+                        } catch (Exception e) {
+                            logger.warn("Erreur lors du formatage natif pour item de liste ordonnée, fallback vers texte simple", e);
+                            String itemText = getElementText(li);
+                            list.item(item -> item.paragraph(itemText));
+                        }
+                    } else {
+                        // Texte simple
+                        String itemText = getElementText(li);
+                        list.item(item -> item.paragraph(itemText));
+                    }
                 }
             });
         }
@@ -585,10 +725,21 @@ public class HtmlToAdfConverter {
         try {
             logger.debug("Processing table with {} rows", table.select("tr").size());
             
+            // Extract and process table caption if present
+            Element caption = table.select("caption").first();
+            Document result = doc;
+            if (caption != null) {
+                String captionText = getElementText(caption).trim();
+                if (!captionText.isEmpty()) {
+                    logger.debug("Found table caption: {}", captionText);
+                    result = result.paragraph(captionText);
+                }
+            }
+            
             // Get all rows to analyze structure
             Elements allRows = table.select("tr");
             if (allRows.isEmpty()) {
-                return doc.paragraph("Empty table");
+                return result.paragraph("Empty table");
             }
             
             // Create native ADF table structure
@@ -648,7 +799,7 @@ public class HtmlToAdfConverter {
             tableNode.set("content", tableContent);
             
             // Inject the native table into the document using reflection
-            return injectNativeAdfNode(doc, tableNode);
+            return injectNativeAdfNode(result, tableNode);
             
         } catch (Exception e) {
             logger.warn("Error processing table as native ADF, falling back to structured format", e);
@@ -753,15 +904,54 @@ public class HtmlToAdfConverter {
     }
 
     /**
-     * Processes a blockquote element.
+     * Processes a blockquote element with native ADF blockquote.
      */
     private Document processBlockquote(Document doc, Element element) {
-        String text = getElementText(element);
-        if (!text.trim().isEmpty()) {
-            // Utilisons un paragraphe avec indicateur de citation
-            return doc.paragraph("> " + text);
-        }
-        return doc;
+        // Utiliser blockquote natif ADF au lieu de paragraphe avec préfixe
+        return doc.quote(quote -> {
+            // Traiter récursivement le contenu du blockquote
+            for (Element child : element.children()) {
+                String tagName = child.tagName().toLowerCase();
+                
+                // Traiter différents types de contenu dans la citation
+                switch (tagName) {
+                    case "p":
+                        // Paragraphe dans la citation
+                        if (hasInlineFormatting(child)) {
+                            try {
+                                List<Text> textNodes = new ArrayList<>();
+                                for (org.jsoup.nodes.Node node : child.childNodes()) {
+                                    textNodes.addAll(processNodeToTextNodes(node));
+                                }
+                                Text[] textArray = textNodes.toArray(new Text[0]);
+                                quote.paragraph(textArray);
+                            } catch (Exception e) {
+                                logger.warn("Erreur lors du formatage natif pour blockquote, fallback vers texte simple", e);
+                                quote.paragraph(getElementText(child));
+                            }
+                        } else {
+                            quote.paragraph(getElementText(child));
+                        }
+                        break;
+                    
+                    default:
+                        // Pour les autres éléments, utiliser le texte simple
+                        String text = getElementText(child);
+                        if (!text.trim().isEmpty()) {
+                            quote.paragraph(text);
+                        }
+                        break;
+                }
+            }
+            
+            // Si aucun enfant structuré, traiter le texte direct du blockquote
+            if (element.children().isEmpty()) {
+                String text = getElementText(element);
+                if (!text.trim().isEmpty()) {
+                    quote.paragraph(text);
+                }
+            }
+        });
     }
     
     /**
@@ -937,7 +1127,7 @@ public class HtmlToAdfConverter {
     }
     
     /**
-     * Processes link elements.
+     * Processes link elements - amélioration pour gérer les liens de manière plus claire.
      */
     private Document processLink(Document doc, Element element) {
         String href = element.attr("href");
@@ -948,8 +1138,11 @@ public class HtmlToAdfConverter {
         }
         
         if (!href.isEmpty()) {
-            return doc.paragraph(text + " (" + href + ")");
+            // Utiliser le lien natif ADF au lieu de texte simple
+            Text linkText = createNativeLinkText(text, href);
+            return doc.paragraph(linkText);
         } else {
+            // Lien sans href - garder juste le texte
             return doc.paragraph(text);
         }
     }
@@ -1034,8 +1227,365 @@ public class HtmlToAdfConverter {
         logger.warn("Creating fallback ADF document for: {}", title);
         
         return Document.create()
-                .h1(title != null ? title : "Document")
                 .paragraph("Content processing failed. Raw content:")
                 .paragraph(content != null ? content : "No content available");
+    }
+    
+    /**
+     * Détecte si un élément contient du formatage inline (strong, em, code, links avec href, etc.).
+     */
+    private boolean hasInlineFormatting(Element element) {
+        // Vérifier récursivement si l'élément contient des tags de formatage
+        boolean hasBasicFormatting = !element.select("strong, b, em, i, code, u, s, del, strike").isEmpty();
+        
+        // Vérifier les liens, mais seulement ceux qui ont un href (vrais liens)
+        boolean hasRealLinks = false;
+        Elements links = element.select("a");
+        for (Element link : links) {
+            if (!link.attr("href").isEmpty()) {
+                hasRealLinks = true;
+                break;
+            }
+        }
+        
+        return hasBasicFormatting || hasRealLinks;
+    }
+    
+    /**
+     * Traite un bloc de texte avec formatage inline natif ADF.
+     */
+    private Document processTextBlockWithNativeFormatting(Document doc, Element element) {
+        try {
+            // Créer une liste de nœuds Text avec formatage
+            List<Text> textNodes = new ArrayList<>();
+            
+            // Traiter récursivement tous les nœuds enfants
+            for (org.jsoup.nodes.Node child : element.childNodes()) {
+                textNodes.addAll(processNodeToTextNodes(child));
+            }
+            
+            // Convertir la liste en array pour paragraph()
+            Text[] textArray = textNodes.toArray(new Text[0]);
+            
+            return doc.paragraph(textArray);
+            
+        } catch (Exception e) {
+            logger.warn("Erreur lors du formatage natif, fallback vers texte simple", e);
+            // Fallback vers la méthode existante
+            String textContent = cleanText(element.text());
+            return doc.paragraph(textContent);
+        }
+    }
+    
+    /**
+     * Convertit récursivement un nœud JSoup en liste de nœuds Text ADF.
+     */
+    private List<Text> processNodeToTextNodes(org.jsoup.nodes.Node node) {
+        List<Text> result = new ArrayList<>();
+        
+        if (node instanceof org.jsoup.nodes.TextNode) {
+            // Nœud de texte simple
+            String text = ((org.jsoup.nodes.TextNode) node).text();
+            if (!text.trim().isEmpty()) {
+                result.add(Text.of(text));
+            }
+        } else if (node instanceof Element) {
+            Element element = (Element) node;
+            String tagName = element.tagName().toLowerCase();
+            
+            switch (tagName) {
+                case "strong":
+                case "b":
+                    result.addAll(createFormattedTextNodes(element, "strong"));
+                    break;
+                case "em":
+                case "i":
+                    result.addAll(createFormattedTextNodes(element, "em"));
+                    break;
+                case "code":
+                    result.addAll(createFormattedTextNodes(element, "code"));
+                    break;
+                case "u":
+                    result.addAll(createFormattedTextNodes(element, "underline"));
+                    break;
+                case "s":
+                case "del":
+                case "strike":
+                    result.addAll(createFormattedTextNodes(element, "strike"));
+                    break;
+                case "a":
+                    // Vérifier si le lien a un href
+                    String linkHref = element.attr("href");
+                    if (!linkHref.isEmpty()) {
+                        // Utiliser les liens natifs ADF avec marks
+                        result.addAll(processLinkElement(element));
+                    } else {
+                        // Lien sans href - traiter récursivement comme du texte normal
+                        for (org.jsoup.nodes.Node child : element.childNodes()) {
+                            result.addAll(processNodeToTextNodes(child));
+                        }
+                    }
+                    break;
+                default:
+                    // Pour les autres éléments, traiter récursivement
+                    for (org.jsoup.nodes.Node child : element.childNodes()) {
+                        result.addAll(processNodeToTextNodes(child));
+                    }
+                    break;
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Crée des nœuds Text avec le formatage spécifié.
+     */
+    private List<Text> createFormattedTextNodes(Element element, String formatType) {
+        List<Text> result = new ArrayList<>();
+        
+        // Traiter le contenu de l'élément
+        for (org.jsoup.nodes.Node child : element.childNodes()) {
+            if (child instanceof org.jsoup.nodes.TextNode) {
+                String text = ((org.jsoup.nodes.TextNode) child).text();
+                if (!text.trim().isEmpty()) {
+                    Text textNode = Text.of(text);
+                    
+                    // Appliquer le formatage selon le type
+                    switch (formatType) {
+                        case "strong":
+                            textNode = textNode.strong();
+                            break;
+                        case "em":
+                            textNode = textNode.em();
+                            break;
+                        case "code":
+                            textNode = textNode.code();
+                            break;
+                        case "underline":
+                            textNode = createNativeFormattedText(text, "underline");
+                            break;
+                        case "strike":
+                            textNode = createNativeFormattedText(text, "strike");
+                            break;
+                        default:
+                            // Pas de formatage supplémentaire
+                            break;
+                    }
+                    
+                    result.add(textNode);
+                }
+            } else if (child instanceof Element) {
+                // Gérer le formatage imbriqué
+                Element childElement = (Element) child;
+                String childTagName = childElement.tagName().toLowerCase();
+                
+                // Pour le formatage imbriqué, on prend le texte et on applique les deux formatages
+                // (limitation de l'approche actuelle)
+                String text = childElement.text();
+                if (!text.trim().isEmpty()) {
+                    Text textNode = Text.of(text);
+                    
+                    // Appliquer le formatage parent
+                    switch (formatType) {
+                        case "strong":
+                            textNode = textNode.strong();
+                            break;
+                        case "em":
+                            textNode = textNode.em();
+                            break;
+                        case "code":
+                            textNode = textNode.code();
+                            break;
+                    }
+                    
+                    // Appliquer le formatage enfant
+                    switch (childTagName) {
+                        case "strong":
+                        case "b":
+                            textNode = textNode.strong();
+                            break;
+                        case "em":
+                        case "i":
+                            textNode = textNode.em();
+                            break;
+                        case "code":
+                            textNode = textNode.code();
+                            break;
+                    }
+                    
+                    result.add(textNode);
+                }
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Extrait uniquement le titre de la page du contenu HTML (premier H1).
+     * 
+     * @param htmlContent le contenu HTML
+     * @return le titre extrait ou null si aucun H1 trouvé
+     */
+    public String extractPageTitleOnly(String htmlContent) {
+        TitleAndContent extracted = extractPageTitle(htmlContent);
+        return extracted.title;
+    }
+    
+    /**
+     * Extrait le titre de la page du contenu HTML (H1 en début de page) et retourne le contenu sans ce titre.
+     * Cette méthode donne la priorité absolue au premier H1 trouvé dans le document.
+     * 
+     * @param htmlContent le contenu HTML
+     * @return un objet TitleAndContent avec le titre extrait et le contenu modifié
+     */
+    public TitleAndContent extractPageTitle(String htmlContent) {
+        if (htmlContent == null || htmlContent.trim().isEmpty()) {
+            return new TitleAndContent(null, htmlContent);
+        }
+        
+        try {
+            // Parse HTML avec JSoup
+            org.jsoup.nodes.Document htmlDoc = Jsoup.parse(htmlContent);
+            
+            // Chercher le premier H1 dans l'ordre d'apparition du document
+            Elements h1Elements = htmlDoc.select("h1");
+            
+            if (!h1Elements.isEmpty()) {
+                Element firstH1 = h1Elements.first();
+                String title = cleanText(firstH1.text());
+                
+                // Vérifier que le titre n'est pas vide après nettoyage
+                if (title != null && !title.trim().isEmpty()) {
+                    // Supprimer le premier H1 du document pour éviter la duplication
+                    firstH1.remove();
+                    
+                    // Retourner le contenu modifié sans le H1
+                    String modifiedContent = htmlDoc.body().html();
+                    
+                    logger.debug("Extracted page title: '{}' from first H1 (H1 removed from content)", title);
+                    return new TitleAndContent(title, modifiedContent);
+                } else {
+                    logger.debug("First H1 found but title is empty after cleaning, skipping");
+                }
+            }
+            
+            logger.debug("No valid H1 found in content, no title extracted");
+            return new TitleAndContent(null, htmlContent);
+            
+        } catch (Exception e) {
+            logger.warn("Error extracting page title from HTML content", e);
+            return new TitleAndContent(null, htmlContent);
+        }
+    }
+    
+    /**
+     * Crée un nœud Text ADF natif avec un mark de type link.
+     * 
+     * @param linkText Le texte du lien à afficher
+     * @param href L'URL du lien
+     * @return Un objet Text avec des marks pour créer un lien natif ADF
+     */
+    private Text createNativeLinkText(String linkText, String href) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            ObjectNode textNode = mapper.createObjectNode();
+            
+            textNode.put("type", "text");
+            textNode.put("text", linkText);
+            
+            // Créer le mark pour le lien
+            ArrayNode marks = mapper.createArrayNode();
+            ObjectNode linkMark = mapper.createObjectNode();
+            linkMark.put("type", "link");
+            
+            ObjectNode attrs = mapper.createObjectNode();
+            attrs.put("href", href);
+            linkMark.set("attrs", attrs);
+            
+            marks.add(linkMark);
+            textNode.set("marks", marks);
+            
+            // Utiliser Jackson pour créer l'objet Text à partir du JSON
+            return mapper.treeToValue(textNode, Text.class);
+        } catch (Exception e) {
+            logger.warn("Impossible de créer un lien natif ADF, utilisation du fallback: {}", e.getMessage());
+            // Fallback vers l'ancien format en cas d'erreur
+            return Text.of(linkText + " (" + href + ")");
+        }
+    }
+    
+    /**
+     * Crée un objet Text avec un mark de formatage natif ADF (underline, strike).
+     * 
+     * @param text Le texte à formater
+     * @param markType Le type de mark ("underline", "strike")
+     * @return Un objet Text avec des marks pour créer un formatage natif ADF
+     */
+    private Text createNativeFormattedText(String text, String markType) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            ObjectNode textNode = mapper.createObjectNode();
+            
+            textNode.put("type", "text");
+            textNode.put("text", text);
+            
+            // Créer le mark pour le formatage
+            ArrayNode marks = mapper.createArrayNode();
+            ObjectNode formatMark = mapper.createObjectNode();
+            formatMark.put("type", markType);
+            
+            marks.add(formatMark);
+            textNode.set("marks", marks);
+            
+            // Utiliser Jackson pour créer l'objet Text à partir du JSON
+            return mapper.treeToValue(textNode, Text.class);
+        } catch (Exception e) {
+            logger.warn("Impossible de créer un formatage natif ADF {}, utilisation du fallback: {}", markType, e.getMessage());
+            // Fallback vers du texte simple en cas d'erreur
+            return Text.of(text);
+        }
+    }
+    
+    /**
+     * Traite un élément lien (<a>) et retourne une liste de nœuds Text ADF natifs.
+     * Gère les liens avec des marks natifs au lieu du format fallback.
+     */
+    private List<Text> processLinkElement(Element linkElement) {
+        List<Text> result = new ArrayList<>();
+        String href = linkElement.attr("href");
+        String linkText = linkElement.text().trim();
+        
+        // Si pas de href, traiter comme du texte simple
+        if (href.isEmpty()) {
+            if (!linkText.isEmpty()) {
+                result.add(Text.of(linkText));
+            }
+            return result;
+        }
+        
+        // Si pas de texte, utiliser l'URL comme texte
+        if (linkText.isEmpty()) {
+            linkText = href;
+        }
+        
+        // Créer le lien natif ADF avec marks
+        result.add(createNativeLinkText(linkText, href));
+        
+        return result;
+    }
+
+    /**
+     * Classe pour encapsuler le titre extrait et le contenu modifié.
+     */
+    public static class TitleAndContent {
+        public final String title;
+        public final String content;
+        
+        public TitleAndContent(String title, String content) {
+            this.title = title;
+            this.content = content;
+        }
     }
 }

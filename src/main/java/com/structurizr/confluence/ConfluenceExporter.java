@@ -200,10 +200,14 @@ public class ConfluenceExporter {
                 htmlContent = content; // Assume HTML ou texte brut
             }
 
+            // Extraire le titre du contenu HTML (premier H1) si disponible
+            String extractedTitle = htmlToAdfConverter.extractPageTitleOnly(htmlContent);
+            String actualTitle = extractedTitle != null && !extractedTitle.trim().isEmpty() ? extractedTitle : sectionTitle;
+            
             // Convertir HTML vers ADF JSON pour Confluence avec support des tables natives
-            String adfJson = htmlToAdfConverter.convertToAdfJson(htmlContent, sectionTitle);
+            String adfJson = htmlToAdfConverter.convertToAdfJson(htmlContent, actualTitle);
 
-            String pageTitle = branchName + " - " + sectionTitle;
+            String pageTitle = branchName + " - " + actualTitle;
             String pageId = confluenceClient.createOrUpdatePage(pageTitle, adfJson, parentPageId);
             logger.info("Section '{}' exportée vers la page ID: {}", sectionTitle, pageId);
         }

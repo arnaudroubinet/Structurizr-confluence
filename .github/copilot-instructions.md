@@ -30,6 +30,17 @@ This repository is configured with Context7 MCP server for accessing up-to-date 
 - Use specific library versions when available
 - Prefer Context7 over web searches for technical documentation
 
+### Accessing Atlassian Documentation with Context7
+To find Atlassian (Confluence, ADF, REST API) documentation using Context7:
+
+1. **Resolve Library ID**: Use `mcp_context7_resolve-library-id` with "atlassian" or "confluence"
+2. **Key Library IDs for this project**:
+   - Confluence REST API: `/websites/atlassian-atlassian-confluence-rest-6.6.0`
+   - General Confluence docs: `/websites/confluence_atlassian_spaces_doc`
+   - Atlassian Forge (ADF): `/websites/developer_atlassian_com-platform-forge`
+3. **Get Documentation**: Use `mcp_context7_get-library-docs` with the resolved library ID
+4. **Focus Topics**: Specify topics like "ADF", "REST API", "document format" for targeted results
+
 ## Build and Validation Instructions
 
 ### Prerequisites
