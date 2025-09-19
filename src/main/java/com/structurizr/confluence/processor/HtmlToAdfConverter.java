@@ -425,16 +425,21 @@ public class HtmlToAdfConverter {
             case "q":
                 return doc.paragraph("\"" + getElementText(element) + "\"");
             
-            // Inline formatting - process as text
+            // Inline formatting - process with native ADF marks
             case "span":
+                return processInlineElementAsFormattedParagraph(doc, element, null);
             case "strong":
             case "b":
+                return processInlineElementAsFormattedParagraph(doc, element, "strong");
             case "em":
             case "i":
+                return processInlineElementAsFormattedParagraph(doc, element, "em");
             case "u":
+                return processInlineElementAsFormattedParagraph(doc, element, "underline");
             case "s":
+                return processInlineElementAsFormattedParagraph(doc, element, "strike");
             case "code":
-                return doc.paragraph(getElementText(element));
+                return processInlineElementAsFormattedParagraph(doc, element, "code");
             
             // Skip structure elements
             case "thead":
@@ -1574,6 +1579,81 @@ public class HtmlToAdfConverter {
         result.add(createNativeLinkText(linkText, href));
         
         return result;
+    }
+
+    /**
+     * Processes a standalone inline formatting element as a paragraph with proper ADF marks.
+     * This handles cases like standalone <strong>, <em>, <code> elements that aren't within a paragraph.
+     */
+    private Document processInlineElementAsFormattedParagraph(Document doc, Element element, String formatType) {
+        try {
+            // Convert the element content to text nodes with formatting
+            List<Text> textNodes = new ArrayList<>();
+            
+            for (org.jsoup.nodes.Node child : element.childNodes()) {
+                if (child instanceof org.jsoup.nodes.TextNode) {
+                    String text = ((org.jsoup.nodes.TextNode) child).text();
+                    if (!text.trim().isEmpty()) {
+                        if (formatType != null) {
+                            textNodes.add(createFormattedText(text, formatType));
+                        } else {
+                            textNodes.add(Text.of(text));
+                        }
+                    }
+                } else if (child instanceof Element) {
+                    // Handle nested elements recursively 
+                    Element childElement = (Element) child;
+                    textNodes.addAll(processNodeToTextNodes(childElement));
+                }
+            }
+            
+            if (!textNodes.isEmpty()) {
+                return doc.paragraph(textNodes.toArray(new Text[0]));
+            } else {
+                // Fallback to simple text extraction
+                String text = getElementText(element);
+                if (!text.trim().isEmpty()) {
+                    if (formatType != null) {
+                        Text formattedText = createFormattedText(text, formatType);
+                        return doc.paragraph(formattedText);
+                    } else {
+                        return doc.paragraph(text);
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.warn("Error processing inline element as formatted paragraph, falling back to simple text", e);
+            // Fallback to simple text extraction
+            String text = getElementText(element);
+            if (!text.trim().isEmpty()) {
+                return doc.paragraph(text);
+            }
+        }
+        
+        return doc;
+    }
+    
+    /**
+     * Creates a Text node with the specified formatting mark using the ADF Builder API.
+     */
+    private Text createFormattedText(String text, String formatType) {
+        Text textNode = Text.of(text);
+        
+        switch (formatType) {
+            case "strong":
+                return textNode.strong();
+            case "em":
+                return textNode.em();
+            case "code":
+                return textNode.code();
+            case "underline":
+                return createNativeFormattedText(text, "underline");
+            case "strike":
+                return createNativeFormattedText(text, "strike");
+            default:
+                return textNode;
+        }
     }
 
     /**
