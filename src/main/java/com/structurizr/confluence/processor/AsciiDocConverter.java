@@ -154,7 +154,7 @@ public class AsciiDocConverter {
             // Improved regex to capture only the diagram key (alphanumeric, underscores, hyphens)
             processed = processed.replaceAll(
                 "image::embed:([a-zA-Z0-9_-]+)\\[\\]",
-                "image::https://static.structurizr.com/workspace/" + workspaceId + "/diagrams/$1-" + branchName + ".svg[]"
+                "image::https://structurizr.roubinet.fr/workspace/" + workspaceId + "/diagrams/$1-" + branchName + ".svg[]"
             );
             logger.debug("Replaced diagram embeds with workspace {} and branch {}", workspaceId, branchName);
         } else {

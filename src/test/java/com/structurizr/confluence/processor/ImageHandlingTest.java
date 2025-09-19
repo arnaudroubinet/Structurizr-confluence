@@ -22,7 +22,7 @@ class ImageHandlingTest {
         logger.info("=== TEST EXTERNAL IMAGE HANDLING ===");
         
         // Test external image with Structurizr diagram URL
-        String htmlWithExternalImage = "<img src=\"https://static.structurizr.com/workspace/1/diagrams/itms-context.svg\" alt=\"Context Diagram\" title=\"ITMS Context View\">";
+        String htmlWithExternalImage = "<img src=\"https://structurizr.roubinet.fr/workspace/1/diagrams/itms-context.svg\" alt=\"Context Diagram\" title=\"ITMS Context View\">";
         
         Document doc = converter.convertToAdf(htmlWithExternalImage, "Image Test");
         String adfJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(doc);
@@ -34,7 +34,7 @@ class ImageHandlingTest {
         assertTrue(adfJson.contains("\"type\" : \"mediaGroup\""), "Should create mediaGroup for external image");
         assertTrue(adfJson.contains("\"type\" : \"media\""), "Should create media node inside mediaGroup");
         assertTrue(adfJson.contains("\"type\" : \"link\""), "External image should use link type");
-        assertTrue(adfJson.contains("\"collection\" : \"https://static.structurizr.com/workspace/1/diagrams/itms-context.svg\""), "Should preserve image URL");
+        assertTrue(adfJson.contains("\"collection\" : \"https://structurizr.roubinet.fr/workspace/1/diagrams/itms-context.svg\""), "Should preserve image URL");
         assertTrue(adfJson.contains("\"occurrenceKey\" : \"ITMS Context View\""), "Should use title as caption");
         
         // Verify it's NOT using the old text format
@@ -94,7 +94,7 @@ class ImageHandlingTest {
         // Test the complete workflow: AsciiDoc -> HTML -> ADF for Structurizr diagrams
         AsciiDocConverter asciiConverter = new AsciiDocConverter();
         
-        String asciiDocWithEmbed = "== Architecture Overview\n\nimage::https://static.structurizr.com/workspace/1/diagrams/context-view.svg[Context View, title=System Context Diagram]";
+        String asciiDocWithEmbed = "== Architecture Overview\n\nimage::https://structurizr.roubinet.fr/workspace/1/diagrams/context-view.svg[Context View, title=System Context Diagram]";
         
         // Step 1: AsciiDoc to HTML
         String html = asciiConverter.convertToHtml(asciiDocWithEmbed, "diagram_test");

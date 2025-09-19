@@ -34,7 +34,7 @@ class ImageUploadManagerTest {
         logger.info("=== TEST FILENAME EXTRACTION ===");
         
         // Test normal URL with filename
-        String url1 = "https://static.structurizr.com/workspace/1/diagrams/context-view.svg";
+        String url1 = "https://structurizr.roubinet.fr/workspace/1/diagrams/context-view.svg";
         String filename1 = imageUploadManager.extractFilenameFromUrl(url1);
         logger.info("URL: {} -> Filename: {}", url1, filename1);
         assertEquals("context-view.svg", filename1);
@@ -114,7 +114,7 @@ class ImageUploadManagerTest {
         converter.setCurrentPageId("test-page-123");
         
         // Test external image with Structurizr diagram URL
-        String htmlWithExternalImage = "<img src=\"https://static.structurizr.com/workspace/1/diagrams/context-view.svg\" alt=\"Context Diagram\">";
+        String htmlWithExternalImage = "<img src=\"https://structurizr.roubinet.fr/workspace/1/diagrams/context-view.svg\" alt=\"Context Diagram\">";
         
         com.atlassian.adf.Document doc = converter.convertToAdf(htmlWithExternalImage, "Image Test");
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -129,7 +129,7 @@ class ImageUploadManagerTest {
         assertFalse(adfJson.contains("\"type\" : \"link\""), "Should NOT use external link type");
         
         // Verify upload was called
-        verify(confluenceClient, times(1)).downloadImage("https://static.structurizr.com/workspace/1/diagrams/context-view.svg");
+        verify(confluenceClient, times(1)).downloadImage("https://structurizr.roubinet.fr/workspace/1/diagrams/context-view.svg");
         verify(confluenceClient, times(1)).uploadAttachment(eq("test-page-123"), eq("context-view.svg"), any(byte[].class), eq("image/svg+xml"));
         
         logger.info("✅ Image handling with upload manager working correctly");

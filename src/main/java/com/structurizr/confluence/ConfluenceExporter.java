@@ -553,7 +553,7 @@ public class ConfluenceExporter {
             
         if (isFromStructurizr) {
             String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
-            if (structurizrServerUrl == null) structurizrServerUrl = "https://static.structurizr.com";
+            if (structurizrServerUrl == null) structurizrServerUrl = "https://structurizr.roubinet.fr";
             diagramsDoc.paragraph("Cette page regroupe tous les schémas PNG du workspace Structurizr (serveur: " + structurizrServerUrl + ", workspace: " + workspaceId + ").");
         } else {
             diagramsDoc.paragraph("Cette page liste les vues/diagrammes disponibles dans le workspace (chargé depuis un fichier JSON).");
@@ -582,7 +582,7 @@ public class ConfluenceExporter {
                     if (isFromStructurizr) {
                         // Try to link to actual diagram images for Structurizr workspaces
                         String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
-                        if (structurizrServerUrl == null) structurizrServerUrl = "https://static.structurizr.com";
+                        if (structurizrServerUrl == null) structurizrServerUrl = "https://structurizr.roubinet.fr";
                         String pngUrl = structurizrServerUrl + "/workspace/" + workspaceId + "/diagrams/" + diagramKey + ".png";
                         
                         // Test if image is accessible
