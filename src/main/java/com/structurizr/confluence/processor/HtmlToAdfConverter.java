@@ -1059,18 +1059,51 @@ public class HtmlToAdfConverter {
         String alt = element.attr("alt");
         String title = element.attr("title");
         
-        StringBuilder imageText = new StringBuilder("Image");
-        if (!src.isEmpty()) {
-            imageText.append(": ").append(src);
-        }
-        if (!alt.isEmpty()) {
-            imageText.append(" (").append(alt).append(")");
-        }
-        if (!title.isEmpty()) {
-            imageText.append(" - ").append(title);
+        if (src.isEmpty()) {
+            // Fallback to text description if no src
+            return doc.paragraph("Image: (no source)");
         }
         
-        return doc.paragraph(imageText.toString());
+        try {
+            // Use native ADF media nodes for proper image handling
+            String imageId = generateImageId(src);
+            String caption = title.isEmpty() ? alt : title;
+            
+            if (isExternalUrl(src)) {
+                // External image - use link type
+                return doc.mediaGroup(mediaGroup -> {
+                    if (!caption.isEmpty()) {
+                        mediaGroup.link(imageId, src, caption);
+                    } else {
+                        mediaGroup.link(imageId, src);
+                    }
+                });
+            } else {
+                // Local/attached image - use file type
+                return doc.mediaGroup(mediaGroup -> {
+                    if (!caption.isEmpty()) {
+                        mediaGroup.file(imageId, src, caption);
+                    } else {
+                        mediaGroup.file(imageId, src);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to create native ADF media node for image: {}, falling back to text", src, e);
+            // Fallback to text description
+            StringBuilder imageText = new StringBuilder("Image");
+            if (!src.isEmpty()) {
+                imageText.append(": ").append(src);
+            }
+            if (!alt.isEmpty()) {
+                imageText.append(" (").append(alt).append(")");
+            }
+            if (!title.isEmpty()) {
+                imageText.append(" - ").append(title);
+            }
+            
+            return doc.paragraph(imageText.toString());
+        }
     }
     
     /**
@@ -1579,6 +1612,27 @@ public class HtmlToAdfConverter {
         result.add(createNativeLinkText(linkText, href));
         
         return result;
+    }
+
+    /**
+     * Generates a unique ID for an image based on its source URL.
+     */
+    private String generateImageId(String src) {
+        // Generate a simple ID based on the filename or URL
+        if (src.contains("/")) {
+            String filename = src.substring(src.lastIndexOf("/") + 1);
+            // Remove file extension and special characters
+            return filename.replaceAll("\\.[^.]*$", "").replaceAll("[^a-zA-Z0-9_-]", "_");
+        } else {
+            return src.replaceAll("[^a-zA-Z0-9_-]", "_");
+        }
+    }
+    
+    /**
+     * Checks if a URL is external (http/https) or local/relative.
+     */
+    private boolean isExternalUrl(String url) {
+        return url.startsWith("http://") || url.startsWith("https://");
     }
 
     /**
