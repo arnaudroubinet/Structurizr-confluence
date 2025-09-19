@@ -26,6 +26,10 @@ public class HtmlToAdfConverter {
     private static final Logger logger = LoggerFactory.getLogger(HtmlToAdfConverter.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
     
+    // Image upload manager for handling external images
+    private ImageUploadManager imageUploadManager;
+    private String currentPageId; // Context for image uploads
+    
     // Map des balises HTML vers les méthodes de conversion ADF
     private static final Map<String, String> HTML_TO_ADF_MAPPING = new HashMap<>();
     
@@ -77,6 +81,20 @@ public class HtmlToAdfConverter {
         HTML_TO_ADF_MAPPING.put("br", "hardBreak");
         HTML_TO_ADF_MAPPING.put("a", "link");
         HTML_TO_ADF_MAPPING.put("img", "image");
+    }
+    
+    /**
+     * Sets the image upload manager for handling external images.
+     */
+    public void setImageUploadManager(ImageUploadManager imageUploadManager) {
+        this.imageUploadManager = imageUploadManager;
+    }
+    
+    /**
+     * Sets the current page ID context for image uploads.
+     */
+    public void setCurrentPageId(String pageId) {
+        this.currentPageId = pageId;
     }
     
     
@@ -1065,21 +1083,37 @@ public class HtmlToAdfConverter {
         }
         
         try {
-            // Use native ADF media nodes for proper image handling
             String imageId = generateImageId(src);
             String caption = title.isEmpty() ? alt : title;
             
-            if (isExternalUrl(src)) {
-                // External image - use link type
-                return doc.mediaGroup(mediaGroup -> {
-                    if (!caption.isEmpty()) {
-                        mediaGroup.link(imageId, src, caption);
-                    } else {
-                        mediaGroup.link(imageId, src);
+            if (isExternalUrl(src) && imageUploadManager != null && currentPageId != null) {
+                // External image - download and upload as attachment
+                try {
+                    String attachmentFilename = imageUploadManager.downloadAndUploadImage(src, currentPageId);
+                    
+                    // Use file type with uploaded attachment
+                    return doc.mediaGroup(mediaGroup -> {
+                        if (!caption.isEmpty()) {
+                            mediaGroup.file(imageId, attachmentFilename, caption);
+                        } else {
+                            mediaGroup.file(imageId, attachmentFilename);
+                        }
+                    });
+                    
+                } catch (Exception e) {
+                    logger.warn("Failed to download and upload external image: {}, falling back to text", src, e);
+                    // Fallback to text description for external images that can't be uploaded
+                    StringBuilder imageText = new StringBuilder("Image (external)");
+                    if (!alt.isEmpty()) {
+                        imageText.append(": ").append(alt);
                     }
-                });
+                    if (!title.isEmpty()) {
+                        imageText.append(" - ").append(title);
+                    }
+                    return doc.paragraph(imageText.toString());
+                }
             } else {
-                // Local/attached image - use file type
+                // Local/attached image - use file type as before
                 return doc.mediaGroup(mediaGroup -> {
                     if (!caption.isEmpty()) {
                         mediaGroup.file(imageId, src, caption);

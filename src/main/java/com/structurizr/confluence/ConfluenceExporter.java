@@ -10,6 +10,7 @@ import com.structurizr.confluence.client.StructurizrConfig;
 import com.structurizr.confluence.client.StructurizrWorkspaceLoader;
 import com.structurizr.confluence.processor.AsciiDocConverter;
 import com.structurizr.confluence.processor.HtmlToAdfConverter;
+import com.structurizr.confluence.processor.ImageUploadManager;
 import com.structurizr.documentation.Decision;
 import com.structurizr.model.*;
 import com.structurizr.view.*;
@@ -127,8 +128,8 @@ public class ConfluenceExporter {
     // Générer les ADRs
     exportDecisions(workspace, mainPageId, branchName);
 
-    // Générer la page Schémas
-    exportDiagramsPage(mainPageId, workspace);
+    // Note: Diagrams page removed to avoid duplication with embedded images in documentation
+    // exportDiagramsPage(mainPageId, workspace);
 
     logger.info("Workspace export completed successfully");
     }
@@ -204,11 +205,22 @@ public class ConfluenceExporter {
             String extractedTitle = htmlToAdfConverter.extractPageTitleOnly(htmlContent);
             String actualTitle = extractedTitle != null && !extractedTitle.trim().isEmpty() ? extractedTitle : sectionTitle;
             
+            // Setup image upload manager for this page
+            ImageUploadManager imageUploadManager = new ImageUploadManager(confluenceClient);
+            htmlToAdfConverter.setImageUploadManager(imageUploadManager);
+            
+            // Create page first to get the page ID for image uploads
+            String pageTitle = actualTitle; // Use only the H1 title, not prefixed with branch name
+            String pageId = confluenceClient.createOrUpdatePage(pageTitle, "{\"version\":1,\"type\":\"doc\",\"content\":[]}", parentPageId);
+            
+            // Set page context for image uploads
+            htmlToAdfConverter.setCurrentPageId(pageId);
+            
             // Convertir HTML vers ADF JSON pour Confluence avec support des tables natives
             String adfJson = htmlToAdfConverter.convertToAdfJson(htmlContent, actualTitle);
 
-            String pageTitle = branchName + " - " + actualTitle;
-            String pageId = confluenceClient.createOrUpdatePage(pageTitle, adfJson, parentPageId);
+            // Update page with actual content
+            confluenceClient.updatePageById(pageId, pageTitle, adfJson);
             logger.info("Section '{}' exportée vers la page ID: {}", sectionTitle, pageId);
         }
     }
