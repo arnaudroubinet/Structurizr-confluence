@@ -20,8 +20,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -370,6 +372,111 @@ public class ConfluenceClient {
         }
         
         logger.info("Cleanup completed for space: {}", config.getSpaceKey());
+    }
+    
+    /**
+     * Gets the list of page IDs in the space.
+     * 
+     * @param spaceKey the space key
+     * @return list of page IDs
+     * @throws IOException if the request fails
+     */
+    public List<String> getSpacePageIds(String spaceKey) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            URIBuilder uriBuilder = new URIBuilder(config.getBaseUrl() + "/wiki/api/v2/spaces/" + spaceKey + "/pages");
+            uriBuilder.addParameter("limit", "250");
+            
+            HttpGet httpGet = new HttpGet(uriBuilder.build());
+            httpGet.setHeader("Authorization", authHeader);
+            httpGet.setHeader("Accept", "application/json");
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    throw new IOException("Failed to get space pages: " + response.getStatusLine().getStatusCode() + " - " + responseBody);
+                }
+                
+                JsonNode jsonResponse = objectMapper.readTree(responseBody);
+                JsonNode results = jsonResponse.get("results");
+                
+                List<String> pageIds = new ArrayList<>();
+                if (results != null && results.isArray()) {
+                    for (JsonNode page : results) {
+                        pageIds.add(page.get("id").asText());
+                    }
+                }
+                
+                logger.info("Found {} pages in space {}", pageIds.size(), spaceKey);
+                return pageIds;
+            }
+        } catch (Exception e) {
+            throw new IOException("Error getting space page IDs", e);
+        }
+    }
+    
+    /**
+     * Gets page content in ADF format.
+     * 
+     * @param pageId the page ID
+     * @return the page content as ADF JSON string
+     * @throws IOException if the request fails
+     */
+    public String getPageContent(String pageId) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            URIBuilder uriBuilder = new URIBuilder(config.getBaseUrl() + "/wiki/api/v2/pages/" + pageId);
+            uriBuilder.addParameter("body-format", "atlas_doc_format");
+            
+            HttpGet httpGet = new HttpGet(uriBuilder.build());
+            httpGet.setHeader("Authorization", authHeader);
+            httpGet.setHeader("Accept", "application/json");
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    throw new IOException("Failed to get page content: " + response.getStatusLine().getStatusCode() + " - " + responseBody);
+                }
+                
+                JsonNode jsonResponse = objectMapper.readTree(responseBody);
+                JsonNode body = jsonResponse.get("body");
+                if (body != null && body.get("atlas_doc_format") != null) {
+                    return body.get("atlas_doc_format").get("value").toString();
+                }
+                
+                logger.warn("No ADF content found for page {}", pageId);
+                return "{}";
+            }
+        } catch (Exception e) {
+            throw new IOException("Error getting page content", e);
+        }
+    }
+    
+    /**
+     * Gets page information including title.
+     * 
+     * @param pageId the page ID
+     * @return the page info as JSON string
+     * @throws IOException if the request fails
+     */
+    public String getPageInfo(String pageId) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpGet httpGet = new HttpGet(config.getBaseUrl() + "/wiki/api/v2/pages/" + pageId);
+            httpGet.setHeader("Authorization", authHeader);
+            httpGet.setHeader("Accept", "application/json");
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    throw new IOException("Failed to get page info: " + response.getStatusLine().getStatusCode() + " - " + responseBody);
+                }
+                
+                return responseBody;
+            }
+        } catch (Exception e) {
+            throw new IOException("Error getting page info", e);
+        }
     }
     
     /**
