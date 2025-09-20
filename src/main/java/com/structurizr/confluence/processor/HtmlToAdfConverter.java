@@ -13,8 +13,10 @@ import org.jsoup.nodes.Element;
 
 import org.jsoup.select.Elements;
 
+import java.io.File;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * Converts HTML content to Atlassian Document Format (ADF) for Confluence export.
@@ -29,6 +31,7 @@ public class HtmlToAdfConverter {
     // Image upload manager for handling external images
     private ImageUploadManager imageUploadManager;
     private String currentPageId; // Context for image uploads
+    private Function<String, File> diagramResolver; // Function to resolve local diagram files
     
     // Map des balises HTML vers les méthodes de conversion ADF
     private static final Map<String, String> HTML_TO_ADF_MAPPING = new HashMap<>();
@@ -95,6 +98,15 @@ public class HtmlToAdfConverter {
      */
     public void setCurrentPageId(String pageId) {
         this.currentPageId = pageId;
+    }
+    
+    /**
+     * Sets the diagram resolver function for handling local diagram files.
+     * 
+     * @param diagramResolver function that resolves view keys to local diagram files
+     */
+    public void setDiagramResolver(Function<String, File> diagramResolver) {
+        this.diagramResolver = diagramResolver;
     }
     
     
@@ -1082,6 +1094,12 @@ public class HtmlToAdfConverter {
             return doc.paragraph("Image: (no source)");
         }
         
+        // Check if this is a local diagram placeholder
+        if (src.startsWith("local:diagram:")) {
+            String viewKey = src.substring("local:diagram:".length());
+            return processLocalDiagram(doc, viewKey, alt, title);
+        }
+        
         try {
             String imageId = generateImageId(src);
             String caption = title.isEmpty() ? alt : title;
@@ -1137,6 +1155,49 @@ public class HtmlToAdfConverter {
             }
             
             return doc.paragraph(imageText.toString());
+        }
+    }
+    
+    /**
+     * Processes local diagram files.
+     * 
+     * @param doc the ADF document
+     * @param viewKey the diagram view key
+     * @param alt alternative text
+     * @param title title text
+     * @return updated ADF document
+     */
+    private Document processLocalDiagram(Document doc, String viewKey, String alt, String title) {
+        if (diagramResolver == null || imageUploadManager == null || currentPageId == null) {
+            // No diagram resolver or upload manager - fallback to text
+            return doc.paragraph("Diagram: " + viewKey + (alt.isEmpty() ? "" : " (" + alt + ")"));
+        }
+        
+        try {
+            File diagramFile = diagramResolver.apply(viewKey);
+            if (diagramFile == null || !diagramFile.exists()) {
+                logger.warn("Local diagram file not found for view key: {}", viewKey);
+                return doc.paragraph("Diagram not found: " + viewKey);
+            }
+            
+            // Upload the local diagram file
+            String attachmentFilename = imageUploadManager.uploadLocalFile(diagramFile, currentPageId);
+            
+            // Create media group with the uploaded diagram
+            String imageId = generateImageId(diagramFile.getName());
+            String caption = title.isEmpty() ? alt : title;
+            
+            return doc.mediaGroup(mediaGroup -> {
+                if (!caption.isEmpty()) {
+                    mediaGroup.file(imageId, attachmentFilename, caption);
+                } else {
+                    mediaGroup.file(imageId, attachmentFilename);
+                }
+            });
+            
+        } catch (Exception e) {
+            logger.error("Failed to process local diagram for view key: {}", viewKey, e);
+            return doc.paragraph("Error loading diagram: " + viewKey);
         }
     }
     

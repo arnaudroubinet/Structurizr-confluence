@@ -4,8 +4,10 @@ import com.structurizr.confluence.client.ConfluenceClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -117,6 +119,47 @@ public class ImageUploadManager {
         } else {
             // Default to PNG for unknown types
             return "image/png";
+        }
+    }
+    
+    /**
+     * Uploads a local file as an attachment to the specified page.
+     * 
+     * @param localFile the local file to upload
+     * @param pageId the Confluence page ID to attach the file to
+     * @return the attachment filename to reference in ADF
+     * @throws IOException if upload fails
+     */
+    public String uploadLocalFile(File localFile, String pageId) throws IOException {
+        String filename = localFile.getName();
+        
+        // Check if we've already uploaded this file
+        String cacheKey = "local:" + localFile.getAbsolutePath();
+        if (uploadedImages.containsKey(cacheKey)) {
+            String cachedFilename = uploadedImages.get(cacheKey);
+            logger.debug("Local file already uploaded: {} -> {}", filename, cachedFilename);
+            return cachedFilename;
+        }
+        
+        try {
+            // Read the file content
+            byte[] fileContent = Files.readAllBytes(localFile.toPath());
+            
+            // Determine MIME type based on file extension
+            String mimeType = getMimeTypeFromFilename(filename);
+            
+            // Upload to Confluence
+            confluenceClient.uploadAttachment(pageId, filename, fileContent, mimeType);
+            
+            // Cache the result
+            uploadedImages.put(cacheKey, filename);
+            
+            logger.info("Successfully uploaded local file: {} to page {}", filename, pageId);
+            return filename;
+            
+        } catch (IOException e) {
+            logger.error("Failed to upload local file: {} to page {}", filename, pageId, e);
+            throw e;
         }
     }
     

@@ -6,7 +6,9 @@ import org.asciidoctor.SafeMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Converts AsciiDoc content to HTML using AsciidoctorJ.
@@ -17,10 +19,20 @@ public class AsciiDocConverter {
     private static final Logger logger = LoggerFactory.getLogger(AsciiDocConverter.class);
     
     private final Asciidoctor asciidoctor;
+    private Function<String, File> diagramResolver; // Function to resolve diagram files by view key
     
     public AsciiDocConverter() {
         this.asciidoctor = Asciidoctor.Factory.create();
         logger.info("AsciiDoc converter initialized");
+    }
+    
+    /**
+     * Sets the diagram resolver function.
+     * 
+     * @param diagramResolver function that takes a view key and returns the corresponding diagram file
+     */
+    public void setDiagramResolver(Function<String, File> diagramResolver) {
+        this.diagramResolver = diagramResolver;
     }
     
     /**
@@ -146,19 +158,25 @@ public class AsciiDocConverter {
      */
     private String preprocessAsciiDocContent(String content, String workspaceId, String branchName) {
         // Handle Structurizr diagram embeds: image::embed:diagram_key[]
-        // Convert them to proper image URLs instead of placeholders
         String processed = content;
         
-        if (workspaceId != null && branchName != null) {
-            // Generate proper Structurizr diagram URLs
-            // Improved regex to capture only the diagram key (alphanumeric, underscores, hyphens)
+        // Check if we have local diagram files available
+        if (diagramResolver != null) {
+            // Use local diagram files - replace with placeholders that will be handled by HtmlToAdfConverter
+            processed = processed.replaceAll(
+                "image::embed:([a-zA-Z0-9_-]+)\\[\\]",
+                "image::local:diagram:$1[]"
+            );
+            logger.debug("Replaced diagram embeds with local diagram placeholders");
+        } else if (workspaceId != null && branchName != null) {
+            // Fallback to external URLs (old behavior)
             processed = processed.replaceAll(
                 "image::embed:([a-zA-Z0-9_-]+)\\[\\]",
                 "image::https://structurizr.roubinet.fr/workspace/" + workspaceId + "/diagrams/$1-" + branchName + ".svg[]"
             );
-            logger.debug("Replaced diagram embeds with workspace {} and branch {}", workspaceId, branchName);
+            logger.debug("Replaced diagram embeds with external URLs for workspace {} and branch {}", workspaceId, branchName);
         } else {
-            // Fallback to placeholder text when workspace context is not available
+            // Fallback to placeholder text when no context is available
             processed = processed.replaceAll(
                 "image::embed:([a-zA-Z0-9_-]+)\\[\\]",
                 "[DIAGRAM: $1]"
