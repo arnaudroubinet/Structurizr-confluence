@@ -19,19 +19,19 @@ public class ConfluenceExporterIntegrationTest {
         String confluenceUrl = System.getenv("CONFLUENCE_URL");
         String confluenceToken = System.getenv("CONFLUENCE_TOKEN");
         String confluenceSpaceKey = System.getenv("CONFLUENCE_SPACE_KEY");
-        Assumptions.assumeTrue(confluenceUser != null && !confluenceUser.isBlank(), "CONFLUENCE_USER non défini: test ignoré");
-        Assumptions.assumeTrue(confluenceUrl != null && !confluenceUrl.isBlank(), "CONFLUENCE_URL non défini: test ignoré");
-        Assumptions.assumeTrue(confluenceToken != null && !confluenceToken.isBlank(), "CONFLUENCE_TOKEN non défini: test ignoré");
-        Assumptions.assumeTrue(confluenceSpaceKey != null && !confluenceSpaceKey.isBlank(), "CONFLUENCE_SPACE_KEY non défini: test ignoré");
-        assertNotNull(confluenceSpaceKey, "CONFLUENCE_SPACE_KEY doit être défini");
+        Assumptions.assumeTrue(confluenceUser != null && !confluenceUser.isBlank(), "CONFLUENCE_USER not defined: test skipped");
+        Assumptions.assumeTrue(confluenceUrl != null && !confluenceUrl.isBlank(), "CONFLUENCE_URL not defined: test skipped");
+        Assumptions.assumeTrue(confluenceToken != null && !confluenceToken.isBlank(), "CONFLUENCE_TOKEN not defined: test skipped");
+        Assumptions.assumeTrue(confluenceSpaceKey != null && !confluenceSpaceKey.isBlank(), "CONFLUENCE_SPACE_KEY not defined: test skipped");
+        assertNotNull(confluenceSpaceKey, "CONFLUENCE_SPACE_KEY must be defined");
         
         ConfluenceConfig config = new ConfluenceConfig(confluenceUrl, confluenceUser, confluenceToken, confluenceSpaceKey);
 
-        // Nettoyer l'espace Confluence avant l'export
+        // Clean the Confluence space before export
         ConfluenceExporter exporter = new ConfluenceExporter(config);
-        System.out.println("Nettoyage de l'espace Confluence: " + confluenceSpaceKey);
+        System.out.println("Cleaning Confluence space: " + confluenceSpaceKey);
         exporter.cleanConfluenceSpace();
-        System.out.println("Nettoyage terminé");
+        System.out.println("Cleaning completed");
 
         File file = Path.of("demo/itms-workspace.json").toFile();
         Workspace workspace = WorkspaceUtils.loadWorkspaceFromJson(file);
