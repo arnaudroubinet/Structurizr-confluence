@@ -13,8 +13,10 @@ import org.jsoup.nodes.Element;
 
 import org.jsoup.select.Elements;
 
+import java.io.File;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * Converts HTML content to Atlassian Document Format (ADF) for Confluence export.
@@ -25,6 +27,11 @@ public class HtmlToAdfConverter {
     
     private static final Logger logger = LoggerFactory.getLogger(HtmlToAdfConverter.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    
+    // Image upload manager for handling external images
+    private ImageUploadManager imageUploadManager;
+    private String currentPageId; // Context for image uploads
+    private Function<String, File> diagramResolver; // Function to resolve local diagram files
     
     // Map des balises HTML vers les méthodes de conversion ADF
     private static final Map<String, String> HTML_TO_ADF_MAPPING = new HashMap<>();
@@ -77,6 +84,29 @@ public class HtmlToAdfConverter {
         HTML_TO_ADF_MAPPING.put("br", "hardBreak");
         HTML_TO_ADF_MAPPING.put("a", "link");
         HTML_TO_ADF_MAPPING.put("img", "image");
+    }
+    
+    /**
+     * Sets the image upload manager for handling external images.
+     */
+    public void setImageUploadManager(ImageUploadManager imageUploadManager) {
+        this.imageUploadManager = imageUploadManager;
+    }
+    
+    /**
+     * Sets the current page ID context for image uploads.
+     */
+    public void setCurrentPageId(String pageId) {
+        this.currentPageId = pageId;
+    }
+    
+    /**
+     * Sets the diagram resolver function for handling local diagram files.
+     * 
+     * @param diagramResolver function that resolves view keys to local diagram files
+     */
+    public void setDiagramResolver(Function<String, File> diagramResolver) {
+        this.diagramResolver = diagramResolver;
     }
     
     
@@ -425,16 +455,21 @@ public class HtmlToAdfConverter {
             case "q":
                 return doc.paragraph("\"" + getElementText(element) + "\"");
             
-            // Inline formatting - process as text
+            // Inline formatting - process with native ADF marks
             case "span":
+                return processInlineElementAsFormattedParagraph(doc, element, null);
             case "strong":
             case "b":
+                return processInlineElementAsFormattedParagraph(doc, element, "strong");
             case "em":
             case "i":
+                return processInlineElementAsFormattedParagraph(doc, element, "em");
             case "u":
+                return processInlineElementAsFormattedParagraph(doc, element, "underline");
             case "s":
+                return processInlineElementAsFormattedParagraph(doc, element, "strike");
             case "code":
-                return doc.paragraph(getElementText(element));
+                return processInlineElementAsFormattedParagraph(doc, element, "code");
             
             // Skip structure elements
             case "thead":
@@ -1054,18 +1089,116 @@ public class HtmlToAdfConverter {
         String alt = element.attr("alt");
         String title = element.attr("title");
         
-        StringBuilder imageText = new StringBuilder("Image");
-        if (!src.isEmpty()) {
-            imageText.append(": ").append(src);
-        }
-        if (!alt.isEmpty()) {
-            imageText.append(" (").append(alt).append(")");
-        }
-        if (!title.isEmpty()) {
-            imageText.append(" - ").append(title);
+        if (src.isEmpty()) {
+            // Fallback to text description if no src
+            return doc.paragraph("Image: (no source)");
         }
         
-        return doc.paragraph(imageText.toString());
+        // Check if this is a local diagram placeholder
+        if (src.startsWith("local:diagram:")) {
+            String viewKey = src.substring("local:diagram:".length());
+            return processLocalDiagram(doc, viewKey, alt, title);
+        }
+        
+        try {
+            String imageId = generateImageId(src);
+            String caption = title.isEmpty() ? alt : title;
+            
+            if (isExternalUrl(src) && imageUploadManager != null && currentPageId != null) {
+                // External image - download and upload as attachment
+                try {
+                    String attachmentFilename = imageUploadManager.downloadAndUploadImage(src, currentPageId);
+                    
+                    // Use file type with uploaded attachment
+                    return doc.mediaGroup(mediaGroup -> {
+                        if (!caption.isEmpty()) {
+                            mediaGroup.file(imageId, attachmentFilename, caption);
+                        } else {
+                            mediaGroup.file(imageId, attachmentFilename);
+                        }
+                    });
+                    
+                } catch (Exception e) {
+                    logger.warn("Failed to download and upload external image: {}, falling back to text", src, e);
+                    // Fallback to text description for external images that can't be uploaded
+                    StringBuilder imageText = new StringBuilder("Image (external)");
+                    if (!alt.isEmpty()) {
+                        imageText.append(": ").append(alt);
+                    }
+                    if (!title.isEmpty()) {
+                        imageText.append(" - ").append(title);
+                    }
+                    return doc.paragraph(imageText.toString());
+                }
+            } else {
+                // Local/attached image - use file type as before
+                return doc.mediaGroup(mediaGroup -> {
+                    if (!caption.isEmpty()) {
+                        mediaGroup.file(imageId, src, caption);
+                    } else {
+                        mediaGroup.file(imageId, src);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to create native ADF media node for image: {}, falling back to text", src, e);
+            // Fallback to text description
+            StringBuilder imageText = new StringBuilder("Image");
+            if (!src.isEmpty()) {
+                imageText.append(": ").append(src);
+            }
+            if (!alt.isEmpty()) {
+                imageText.append(" (").append(alt).append(")");
+            }
+            if (!title.isEmpty()) {
+                imageText.append(" - ").append(title);
+            }
+            
+            return doc.paragraph(imageText.toString());
+        }
+    }
+    
+    /**
+     * Processes local diagram files.
+     * 
+     * @param doc the ADF document
+     * @param viewKey the diagram view key
+     * @param alt alternative text
+     * @param title title text
+     * @return updated ADF document
+     */
+    private Document processLocalDiagram(Document doc, String viewKey, String alt, String title) {
+        if (diagramResolver == null || imageUploadManager == null || currentPageId == null) {
+            // No diagram resolver or upload manager - fallback to text
+            return doc.paragraph("Diagram: " + viewKey + (alt.isEmpty() ? "" : " (" + alt + ")"));
+        }
+        
+        try {
+            File diagramFile = diagramResolver.apply(viewKey);
+            if (diagramFile == null || !diagramFile.exists()) {
+                logger.warn("Local diagram file not found for view key: {}", viewKey);
+                return doc.paragraph("Diagram not found: " + viewKey);
+            }
+            
+            // Upload the local diagram file
+            String attachmentFilename = imageUploadManager.uploadLocalFile(diagramFile, currentPageId);
+            
+            // Create media group with the uploaded diagram
+            String imageId = generateImageId(diagramFile.getName());
+            String caption = title.isEmpty() ? alt : title;
+            
+            return doc.mediaGroup(mediaGroup -> {
+                if (!caption.isEmpty()) {
+                    mediaGroup.file(imageId, attachmentFilename, caption);
+                } else {
+                    mediaGroup.file(imageId, attachmentFilename);
+                }
+            });
+            
+        } catch (Exception e) {
+            logger.error("Failed to process local diagram for view key: {}", viewKey, e);
+            return doc.paragraph("Error loading diagram: " + viewKey);
+        }
     }
     
     /**
@@ -1574,6 +1707,102 @@ public class HtmlToAdfConverter {
         result.add(createNativeLinkText(linkText, href));
         
         return result;
+    }
+
+    /**
+     * Generates a unique ID for an image based on its source URL.
+     */
+    private String generateImageId(String src) {
+        // Generate a simple ID based on the filename or URL
+        if (src.contains("/")) {
+            String filename = src.substring(src.lastIndexOf("/") + 1);
+            // Remove file extension and special characters
+            return filename.replaceAll("\\.[^.]*$", "").replaceAll("[^a-zA-Z0-9_-]", "_");
+        } else {
+            return src.replaceAll("[^a-zA-Z0-9_-]", "_");
+        }
+    }
+    
+    /**
+     * Checks if a URL is external (http/https) or local/relative.
+     */
+    private boolean isExternalUrl(String url) {
+        return url.startsWith("http://") || url.startsWith("https://");
+    }
+
+    /**
+     * Processes a standalone inline formatting element as a paragraph with proper ADF marks.
+     * This handles cases like standalone <strong>, <em>, <code> elements that aren't within a paragraph.
+     */
+    private Document processInlineElementAsFormattedParagraph(Document doc, Element element, String formatType) {
+        try {
+            // Convert the element content to text nodes with formatting
+            List<Text> textNodes = new ArrayList<>();
+            
+            for (org.jsoup.nodes.Node child : element.childNodes()) {
+                if (child instanceof org.jsoup.nodes.TextNode) {
+                    String text = ((org.jsoup.nodes.TextNode) child).text();
+                    if (!text.trim().isEmpty()) {
+                        if (formatType != null) {
+                            textNodes.add(createFormattedText(text, formatType));
+                        } else {
+                            textNodes.add(Text.of(text));
+                        }
+                    }
+                } else if (child instanceof Element) {
+                    // Handle nested elements recursively 
+                    Element childElement = (Element) child;
+                    textNodes.addAll(processNodeToTextNodes(childElement));
+                }
+            }
+            
+            if (!textNodes.isEmpty()) {
+                return doc.paragraph(textNodes.toArray(new Text[0]));
+            } else {
+                // Fallback to simple text extraction
+                String text = getElementText(element);
+                if (!text.trim().isEmpty()) {
+                    if (formatType != null) {
+                        Text formattedText = createFormattedText(text, formatType);
+                        return doc.paragraph(formattedText);
+                    } else {
+                        return doc.paragraph(text);
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.warn("Error processing inline element as formatted paragraph, falling back to simple text", e);
+            // Fallback to simple text extraction
+            String text = getElementText(element);
+            if (!text.trim().isEmpty()) {
+                return doc.paragraph(text);
+            }
+        }
+        
+        return doc;
+    }
+    
+    /**
+     * Creates a Text node with the specified formatting mark using the ADF Builder API.
+     */
+    private Text createFormattedText(String text, String formatType) {
+        Text textNode = Text.of(text);
+        
+        switch (formatType) {
+            case "strong":
+                return textNode.strong();
+            case "em":
+                return textNode.em();
+            case "code":
+                return textNode.code();
+            case "underline":
+                return createNativeFormattedText(text, "underline");
+            case "strike":
+                return createNativeFormattedText(text, "strike");
+            default:
+                return textNode;
+        }
     }
 
     /**

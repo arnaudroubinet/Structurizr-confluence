@@ -10,6 +10,8 @@ import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpPut;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.entity.ContentType;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
@@ -368,5 +370,82 @@ public class ConfluenceClient {
         }
         
         logger.info("Cleanup completed for space: {}", config.getSpaceKey());
+    }
+    
+    /**
+     * Uploads an attachment to a Confluence page.
+     * 
+     * @param pageId the ID of the page to attach the file to
+     * @param fileName the name of the file
+     * @param fileContent the binary content of the file
+     * @param mimeType the MIME type of the file
+     * @return the attachment ID
+     * @throws IOException if the upload fails
+     */
+    public String uploadAttachment(String pageId, String fileName, byte[] fileContent, String mimeType) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            String url = config.getBaseUrl() + "/wiki/rest/api/content/" + pageId + "/child/attachment";
+            
+            HttpPost httpPost = new HttpPost(url);
+            httpPost.setHeader("Authorization", authHeader);
+            httpPost.setHeader("X-Atlassian-Token", "nocheck"); // Required for multipart uploads
+            
+            // Create multipart entity
+            org.apache.http.entity.mime.MultipartEntityBuilder builder = 
+                org.apache.http.entity.mime.MultipartEntityBuilder.create();
+            builder.addBinaryBody("file", fileContent, 
+                org.apache.http.entity.ContentType.create(mimeType), fileName);
+            
+            HttpEntity multipart = builder.build();
+            httpPost.setEntity(multipart);
+            
+            logger.info("Uploading attachment '{}' to page ID: {}", fileName, pageId);
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                
+                if (response.getStatusLine().getStatusCode() == 200) {
+                    JsonNode jsonResponse = objectMapper.readTree(responseBody);
+                    JsonNode results = jsonResponse.get("results");
+                    if (results != null && results.isArray() && results.size() > 0) {
+                        String attachmentId = results.get(0).get("id").asText();
+                        logger.info("Attachment uploaded successfully with ID: {}", attachmentId);
+                        return attachmentId;
+                    } else {
+                        throw new IOException("Upload successful but no attachment ID returned");
+                    }
+                } else {
+                    logger.error("Failed to upload attachment. Status: {}, Response: {}", 
+                        response.getStatusLine().getStatusCode(), responseBody);
+                    throw new IOException("Failed to upload attachment: " + responseBody);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Downloads content from a URL and returns the byte array.
+     * 
+     * @param url the URL to download from
+     * @return the downloaded content as byte array
+     * @throws IOException if the download fails
+     */
+    public byte[] downloadImage(String url) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpGet httpGet = new HttpGet(url);
+            httpGet.setHeader("User-Agent", "Structurizr-Confluence-Exporter/1.0");
+            
+            logger.info("Downloading image from: {}", url);
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                if (response.getStatusLine().getStatusCode() == 200) {
+                    byte[] content = EntityUtils.toByteArray(response.getEntity());
+                    logger.info("Downloaded {} bytes from: {}", content.length, url);
+                    return content;
+                } else {
+                    throw new IOException("Failed to download image: " + response.getStatusLine().getStatusCode());
+                }
+            }
+        }
     }
 }

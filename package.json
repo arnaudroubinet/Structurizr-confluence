@@ -1,0 +1,12 @@
+{
+  "name": "structurizr-confluence-exporter",
+  "version": "1.0.0",
+  "description": "Node.js dependencies for diagram export",
+  "main": "export-diagrams.js",
+  "scripts": {
+    "export-diagrams": "node export-diagrams.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  }
+}
