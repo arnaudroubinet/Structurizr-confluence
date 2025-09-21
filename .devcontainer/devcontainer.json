@@ -1,8 +1,8 @@
 {
-  "image": "mcr.microsoft.com/vscode/devcontainers/java:21",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
-      "version": "none",
+      "version": "21",
       "installGradle": "false",
       "installMaven": "true"
     },
