@@ -3,10 +3,13 @@ package com.structurizr.confluence.processor;
 import org.asciidoctor.Asciidoctor;
 import org.asciidoctor.Options;
 import org.asciidoctor.SafeMode;
+import org.asciidoctor.Attributes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Converts AsciiDoc content to HTML using AsciidoctorJ.
@@ -17,10 +20,20 @@ public class AsciiDocConverter {
     private static final Logger logger = LoggerFactory.getLogger(AsciiDocConverter.class);
     
     private final Asciidoctor asciidoctor;
+    private Function<String, File> diagramResolver; // Function to resolve diagram files by view key
     
     public AsciiDocConverter() {
         this.asciidoctor = Asciidoctor.Factory.create();
         logger.info("AsciiDoc converter initialized");
+    }
+    
+    /**
+     * Sets the diagram resolver function.
+     * 
+     * @param diagramResolver function that takes a view key and returns the corresponding diagram file
+     */
+    public void setDiagramResolver(Function<String, File> diagramResolver) {
+        this.diagramResolver = diagramResolver;
     }
     
     /**
@@ -52,12 +65,16 @@ public class AsciiDocConverter {
         try {
             logger.debug("Converting AsciiDoc content to HTML for document: {}", title);
             
-            // Configure conversion options
-            Options options = Options.builder()
-                    .safe(SafeMode.UNSAFE) // Allow all content
-                    .backend("html5")
-                    .standalone(false) // Only body content, no full HTML document
-                    .build();
+        // Configure conversion options: ensure the document title is rendered as H1 using showtitle
+        Attributes attrs = Attributes.builder()
+            .showTitle(true)
+            .build();
+        Options options = Options.builder()
+            .safe(SafeMode.UNSAFE) // Allow all content
+            .backend("html5")
+            .standalone(false) // Only body content, no full HTML document
+            .attributes(attrs)
+            .build();
             
             // Process AsciiDoc content and handle diagram embeds
             String processedContent = preprocessAsciiDocContent(asciiDocContent, workspaceId, branchName);
@@ -72,11 +89,7 @@ public class AsciiDocConverter {
             
         } catch (Exception e) {
             logger.error("Error converting AsciiDoc to HTML for document: {}", title, e);
-            // Fallback: return original content wrapped in HTML
-            return "<div class=\"asciidoc-error\">" +
-                   "<p><strong>AsciiDoc conversion failed:</strong></p>" +
-                   "<pre>" + asciiDocContent + "</pre>" +
-                   "</div>";
+            throw new IllegalStateException("Conversion AsciiDoc -> HTML échouée: " + (title != null ? title : "(sans titre)"), e);
         }
     }
     
@@ -97,13 +110,16 @@ public class AsciiDocConverter {
         try {
             logger.debug("Converting AsciiDoc content to HTML with custom attributes for document: {}", title);
             
-            // Configure conversion options with custom attributes
-            // Note: Using deprecated attributes method for compatibility
-            Options options = Options.builder()
-                    .safe(SafeMode.UNSAFE)
-                    .backend("html5")
-                    .standalone(false)
-                    .build();
+        // Configure conversion options with custom attributes and showtitle
+        Attributes attrs = Attributes.builder()
+            .showTitle(true)
+            .build();
+        Options options = Options.builder()
+            .safe(SafeMode.UNSAFE)
+            .backend("html5")
+            .standalone(false)
+            .attributes(attrs)
+            .build();
             
             // Process AsciiDoc content and handle diagram embeds
             String processedContent = preprocessAsciiDocContent(asciiDocContent);
@@ -118,11 +134,7 @@ public class AsciiDocConverter {
             
         } catch (Exception e) {
             logger.error("Error converting AsciiDoc to HTML with attributes for document: {}", title, e);
-            // Fallback: return original content wrapped in HTML
-            return "<div class=\"asciidoc-error\">" +
-                   "<p><strong>AsciiDoc conversion failed:</strong></p>" +
-                   "<pre>" + asciiDocContent + "</pre>" +
-                   "</div>";
+            throw new IllegalStateException("Conversion AsciiDoc -> HTML (avec attributs) échouée: " + (title != null ? title : "(sans titre)"), e);
         }
     }
     
@@ -146,24 +158,31 @@ public class AsciiDocConverter {
      */
     private String preprocessAsciiDocContent(String content, String workspaceId, String branchName) {
         // Handle Structurizr diagram embeds: image::embed:diagram_key[]
-        // Convert them to proper image URLs instead of placeholders
         String processed = content;
         
-        if (workspaceId != null && branchName != null) {
-            // Generate proper Structurizr diagram URLs
-            // Improved regex to capture only the diagram key (alphanumeric, underscores, hyphens)
+        // Check if we have local diagram files available
+        if (diagramResolver != null) {
+            // Use local diagram files - replace with placeholders that will be handled by HtmlToAdfConverter
             processed = processed.replaceAll(
                 "image::embed:([a-zA-Z0-9_-]+)\\[\\]",
-                "image::https://static.structurizr.com/workspace/" + workspaceId + "/diagrams/$1-" + branchName + ".svg[]"
+                "image::local:diagram:$1[]"
             );
-            logger.debug("Replaced diagram embeds with workspace {} and branch {}", workspaceId, branchName);
+            logger.debug("Replaced diagram embeds with local diagram placeholders");
+        } else if (workspaceId != null && branchName != null) {
+            // Fallback to external URLs (old behavior)
+            processed = processed.replaceAll(
+                "image::embed:([a-zA-Z0-9_-]+)\\[\\]",
+                "image::https://structurizr.roubinet.fr/workspace/" + workspaceId + "/diagrams/$1-" + branchName + ".svg[]"
+            );
+            logger.debug("Replaced diagram embeds with external URLs for workspace {} and branch {}", workspaceId, branchName);
         } else {
-            // Fallback to placeholder text when workspace context is not available
+            // Use local diagram placeholders even without explicit diagram resolver
+            // This allows the HtmlToAdfConverter to attempt to find and use local diagrams
             processed = processed.replaceAll(
                 "image::embed:([a-zA-Z0-9_-]+)\\[\\]",
-                "[DIAGRAM: $1]"
+                "image::local:diagram:$1[]"
             );
-            logger.debug("Used fallback placeholders for diagram embeds (no workspace context)");
+            logger.debug("Used local diagram placeholders as fallback (no workspace context available)");
         }
         
         // Handle include directives that might reference external files

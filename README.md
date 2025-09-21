@@ -65,6 +65,20 @@ try {
 
 ### Loading from Structurizr On-Premise
 
+## Règle de titre des pages Confluence
+
+Le titre final des pages et des entrées de sommaire (TOC) est déterminé par la règle suivante :
+
+- Utiliser le premier `h1` présent dans le contenu converti en HTML
+- Si aucun `h1` valide n’est trouvé, utiliser le nom de fichier de la section
+- Le titre défini dans la section du workspace Structurizr est ignoré
+
+Notes :
+
+- Un `h1` vide ou ne contenant que des espaces est considéré comme non valide et déclenche le fallback au nom de fichier
+- Le `h1` utilisé comme titre de page est retiré du corps de la page afin d’éviter la duplication
+- Cette politique s’applique autant à la génération du sommaire (TOC) qu’à la création/mise à jour des pages
+
 ```java
 import com.structurizr.confluence.ConfluenceExporter;
 import com.structurizr.confluence.client.ConfluenceConfig;

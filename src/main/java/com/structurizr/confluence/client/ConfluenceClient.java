@@ -10,6 +10,8 @@ import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpPut;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.entity.ContentType;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
@@ -18,8 +20,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -273,7 +277,7 @@ public class ConfluenceClient {
             String spaceId = getSpaceId();
             
             // Utiliser l'endpoint API v2 avec l'ID de l'espace
-            HttpGet httpGet = new HttpGet(config.getBaseUrl() + "/wiki/api/v2/spaces/" + spaceId + "/pages");
+            HttpGet httpGet = new HttpGet(config.getBaseUrl() + "/wiki/api/v2/spaces/" + spaceId + "/pages?limit=250");
             httpGet.setHeader("Authorization", authHeader);
             httpGet.setHeader("Accept", "application/json");
             
@@ -368,5 +372,239 @@ public class ConfluenceClient {
         }
         
         logger.info("Cleanup completed for space: {}", config.getSpaceKey());
+    }
+    
+    /**
+     * Gets the list of page IDs in the space.
+     * 
+     * @param spaceKey the space key
+     * @return list of page IDs
+     * @throws IOException if the request fails
+     */
+    public List<String> getSpacePageIds(String spaceKey) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            // Utiliser l'ID d'espace avec l'API v2 (la route avec la clé retourne 400)
+            String spaceId = getSpaceId();
+            URIBuilder uriBuilder = new URIBuilder(config.getBaseUrl() + "/wiki/api/v2/spaces/" + spaceId + "/pages");
+            uriBuilder.addParameter("limit", "250");
+            
+            HttpGet httpGet = new HttpGet(uriBuilder.build());
+            httpGet.setHeader("Authorization", authHeader);
+            httpGet.setHeader("Accept", "application/json");
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    throw new IOException("Failed to get space pages: " + response.getStatusLine().getStatusCode() + " - " + responseBody);
+                }
+                
+                JsonNode jsonResponse = objectMapper.readTree(responseBody);
+                JsonNode results = jsonResponse.get("results");
+                
+                List<String> pageIds = new ArrayList<>();
+                if (results != null && results.isArray()) {
+                    for (JsonNode page : results) {
+                        pageIds.add(page.get("id").asText());
+                    }
+                }
+                
+                logger.info("Found {} pages in space {}", pageIds.size(), spaceKey);
+                return pageIds;
+            }
+        } catch (Exception e) {
+            throw new IOException("Error getting space page IDs", e);
+        }
+    }
+    
+    /**
+     * Gets page content in ADF format.
+     * 
+     * @param pageId the page ID
+     * @return the page content as ADF JSON string
+     * @throws IOException if the request fails
+     */
+    public String getPageContent(String pageId) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            URIBuilder uriBuilder = new URIBuilder(config.getBaseUrl() + "/wiki/api/v2/pages/" + pageId);
+            uriBuilder.addParameter("body-format", "atlas_doc_format");
+            
+            HttpGet httpGet = new HttpGet(uriBuilder.build());
+            httpGet.setHeader("Authorization", authHeader);
+            httpGet.setHeader("Accept", "application/json");
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    throw new IOException("Failed to get page content: " + response.getStatusLine().getStatusCode() + " - " + responseBody);
+                }
+                
+                JsonNode jsonResponse = objectMapper.readTree(responseBody);
+                JsonNode body = jsonResponse.get("body");
+                if (body != null && body.get("atlas_doc_format") != null) {
+                    // Return the raw ADF JSON string. Using toString() here would include extra quotes/escapes
+                    // (e.g., "{\"type\":\"doc\"...}") which breaks string contains checks in tests.
+                    return body.get("atlas_doc_format").get("value").asText();
+                }
+                
+                logger.warn("No ADF content found for page {}", pageId);
+                return "{}";
+            }
+        } catch (Exception e) {
+            throw new IOException("Error getting page content", e);
+        }
+    }
+    
+    /**
+     * Gets page information including title.
+     * 
+     * @param pageId the page ID
+     * @return the page info as JSON string
+     * @throws IOException if the request fails
+     */
+    public String getPageInfo(String pageId) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpGet httpGet = new HttpGet(config.getBaseUrl() + "/wiki/api/v2/pages/" + pageId);
+            httpGet.setHeader("Authorization", authHeader);
+            httpGet.setHeader("Accept", "application/json");
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    throw new IOException("Failed to get page info: " + response.getStatusLine().getStatusCode() + " - " + responseBody);
+                }
+                
+                return responseBody;
+            }
+        } catch (Exception e) {
+            throw new IOException("Error getting page info", e);
+        }
+    }
+    
+    /**
+     * Uploads an attachment to a Confluence page.
+     * 
+     * @param pageId the ID of the page to attach the file to
+     * @param fileName the name of the file
+     * @param fileContent the binary content of the file
+     * @param mimeType the MIME type of the file
+     * @return the attachment ID
+     * @throws IOException if the upload fails
+     */
+    public String uploadAttachment(String pageId, String fileName, byte[] fileContent, String mimeType) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            String url = config.getBaseUrl() + "/wiki/rest/api/content/" + pageId + "/child/attachment";
+            
+            HttpPost httpPost = new HttpPost(url);
+            httpPost.setHeader("Authorization", authHeader);
+            httpPost.setHeader("X-Atlassian-Token", "nocheck"); // Required for multipart uploads
+            
+            // Create multipart entity
+            org.apache.http.entity.mime.MultipartEntityBuilder builder = 
+                org.apache.http.entity.mime.MultipartEntityBuilder.create();
+            builder.addBinaryBody("file", fileContent, 
+                org.apache.http.entity.ContentType.create(mimeType), fileName);
+            
+            HttpEntity multipart = builder.build();
+            httpPost.setEntity(multipart);
+            
+            logger.info("Uploading attachment '{}' to page ID: {}", fileName, pageId);
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                
+                if (response.getStatusLine().getStatusCode() == 200) {
+                    JsonNode jsonResponse = objectMapper.readTree(responseBody);
+                    JsonNode results = jsonResponse.get("results");
+                    if (results != null && results.isArray() && results.size() > 0) {
+                        String attachmentId = results.get(0).get("id").asText();
+                        logger.info("Attachment uploaded successfully with ID: {}", attachmentId);
+                        return attachmentId;
+                    } else {
+                        throw new IOException("Upload successful but no attachment ID returned");
+                    }
+                } else {
+                    logger.error("Failed to upload attachment. Status: {}, Response: {}", 
+                        response.getStatusLine().getStatusCode(), responseBody);
+                    throw new IOException("Failed to upload attachment: " + responseBody);
+                }
+            }
+        }
+    }
+
+    /**
+     * Detailed upload returning Confluence Media identifiers needed by ADF media nodes.
+     * After uploading the attachment, fetches the media fileId and collectionName via expand=extensions.
+     */
+    public AttachmentDetails uploadAttachmentDetailed(String pageId, String fileName, byte[] fileContent, String mimeType) throws IOException {
+        String attachmentId = uploadAttachment(pageId, fileName, fileContent, mimeType);
+
+        // Fetch attachment details with extensions to get media identifiers
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            String getUrl = config.getBaseUrl() + "/wiki/rest/api/content/" + attachmentId + "?expand=extensions";
+            HttpGet httpGet = new HttpGet(getUrl);
+            httpGet.setHeader("Authorization", authHeader);
+            httpGet.setHeader("Accept", "application/json");
+
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    throw new IOException("Failed to fetch attachment extensions: " + response.getStatusLine().getStatusCode() + " - " + responseBody);
+                }
+
+                JsonNode json = objectMapper.readTree(responseBody);
+                String title = json.has("title") ? json.get("title").asText() : fileName;
+                String fileId = null;
+                String collectionName = null;
+                JsonNode extensions = json.get("extensions");
+                if (extensions != null) {
+                    if (extensions.has("fileId")) {
+                        fileId = extensions.get("fileId").asText();
+                    }
+                    if (extensions.has("collectionName")) {
+                        collectionName = extensions.get("collectionName").asText();
+                    }
+                }
+
+                if (fileId == null || collectionName == null) {
+                    logger.warn("Attachment extensions missing media identifiers (fileId or collectionName). Rendering may fail. attachmentId={} response={}", attachmentId, responseBody);
+                } else {
+                    logger.info("Fetched media identifiers for attachment {} -> fileId={}, collectionName={}", attachmentId, fileId, collectionName);
+                }
+
+                return new AttachmentDetails(attachmentId, title, fileId, collectionName);
+            }
+        }
+    }
+
+    /** Record containing attachment details and media identifiers. */
+    public static record AttachmentDetails(String attachmentId, String filename, String fileId, String collectionName) {}
+    
+    /**
+     * Downloads content from a URL and returns the byte array.
+     * 
+     * @param url the URL to download from
+     * @return the downloaded content as byte array
+     * @throws IOException if the download fails
+     */
+    public byte[] downloadImage(String url) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpGet httpGet = new HttpGet(url);
+            httpGet.setHeader("User-Agent", "Structurizr-Confluence-Exporter/1.0");
+            
+            logger.info("Downloading image from: {}", url);
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                if (response.getStatusLine().getStatusCode() == 200) {
+                    byte[] content = EntityUtils.toByteArray(response.getEntity());
+                    logger.info("Downloaded {} bytes from: {}", content.length, url);
+                    return content;
+                } else {
+                    throw new IOException("Failed to download image: " + response.getStatusLine().getStatusCode());
+                }
+            }
+        }
     }
 }

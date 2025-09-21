@@ -1,25 +1,37 @@
 {
-  "name": "Structurizr Confluence Java 21",
-  "build": {
-    "dockerfile": "Dockerfile"
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "installGradle": "false",
+      "installMaven": "true"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "latest"
+    }
   },
-  "settings": {
-    "java.configuration.runtimes": [
-      {
-        "name": "JavaSE-21",
-        "path": "/usr/lib/jvm/java-21-openjdk-amd64",
-        "default": true
-      }
-    ]
-  },
-  "postCreateCommand": "./scripts/build.sh || true",
-  "features": {},
   "customizations": {
     "vscode": {
       "extensions": [
         "vscjava.vscode-java-pack",
         "redhat.java"
-      ]
+      ],
+      "mcp": {
+        "servers": {
+          "context7": {
+            "type": "sse",
+            "url": "https://mcp.context7.com/mcp"
+          },
+          "playwright": {
+            "command": "npx",
+            "args": [
+              "-y",
+              "@modelcontextprotocol/server-playwright"
+            ],
+            "env": {}
+          }
+        }
+      }
     }
   }
 }

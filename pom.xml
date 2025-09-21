@@ -13,9 +13,9 @@
     <description>A Structurizr workspace exporter that generates documentation in Atlassian Document Format (ADF) and publishes to Confluence Cloud</description>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <structurizr.version>1.29.0</structurizr.version>
         <junit.version>5.10.0</junit.version>
@@ -65,6 +65,11 @@
             <artifactId>httpclient</artifactId>
             <version>4.5.14</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpmime</artifactId>
+            <version>4.5.14</version>
+        </dependency>
         
         <!-- AsciidoctorJ for AsciiDoc processing -->
         <dependency>
@@ -72,6 +77,13 @@
             <artifactId>asciidoctorj</artifactId>
             <version>2.5.10</version>
         </dependency>
+
+            <!-- Markdown conversion (CommonMark + extensions) -->
+            <dependency>
+                <groupId>com.vladsch.flexmark</groupId>
+                <artifactId>flexmark-all</artifactId>
+                <version>0.64.8</version>
+            </dependency>
         
         <!-- JSoup for HTML parsing -->
         <dependency>

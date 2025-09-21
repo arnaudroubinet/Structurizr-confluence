@@ -13,8 +13,9 @@ import org.jsoup.nodes.Element;
 
 import org.jsoup.select.Elements;
 
-import java.lang.reflect.Method;
+import java.io.File;
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * Converts HTML content to Atlassian Document Format (ADF) for Confluence export.
@@ -26,57 +27,34 @@ public class HtmlToAdfConverter {
     private static final Logger logger = LoggerFactory.getLogger(HtmlToAdfConverter.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
     
-    // Map des balises HTML vers les méthodes de conversion ADF
-    private static final Map<String, String> HTML_TO_ADF_MAPPING = new HashMap<>();
+    // Image upload manager for handling external images
+    private ImageUploadManager imageUploadManager;
+    private String currentPageId; // Context for image uploads
+    private Function<String, File> diagramResolver; // Function to resolve local diagram files
     
-    static {
-        // Éléments de structure
-        HTML_TO_ADF_MAPPING.put("h1", "heading1");
-        HTML_TO_ADF_MAPPING.put("h2", "heading2");
-        HTML_TO_ADF_MAPPING.put("h3", "heading3");
-        HTML_TO_ADF_MAPPING.put("h4", "heading4");
-        HTML_TO_ADF_MAPPING.put("h5", "heading5");
-        HTML_TO_ADF_MAPPING.put("h6", "heading6");
-        HTML_TO_ADF_MAPPING.put("p", "paragraph");
-        HTML_TO_ADF_MAPPING.put("div", "paragraph");
-        HTML_TO_ADF_MAPPING.put("section", "paragraph");
-        HTML_TO_ADF_MAPPING.put("article", "paragraph");
-        
-        // Éléments de formatage
-        HTML_TO_ADF_MAPPING.put("strong", "strong");
-        HTML_TO_ADF_MAPPING.put("b", "strong");
-        HTML_TO_ADF_MAPPING.put("em", "emphasis");
-        HTML_TO_ADF_MAPPING.put("i", "emphasis");
-        HTML_TO_ADF_MAPPING.put("u", "underline");
-        HTML_TO_ADF_MAPPING.put("s", "strike");
-        HTML_TO_ADF_MAPPING.put("strike", "strike");
-        HTML_TO_ADF_MAPPING.put("del", "strike");
-        HTML_TO_ADF_MAPPING.put("code", "code");
-        HTML_TO_ADF_MAPPING.put("kbd", "code");
-        HTML_TO_ADF_MAPPING.put("samp", "code");
-        HTML_TO_ADF_MAPPING.put("var", "code");
-        
-        // Éléments de liste
-        HTML_TO_ADF_MAPPING.put("ul", "bulletList");
-        HTML_TO_ADF_MAPPING.put("ol", "numberedList");
-        HTML_TO_ADF_MAPPING.put("li", "listItem");
-        
-        // Éléments de tableau
-        HTML_TO_ADF_MAPPING.put("table", "table");
-        HTML_TO_ADF_MAPPING.put("thead", "tableHeader");
-        HTML_TO_ADF_MAPPING.put("tbody", "tableBody");
-        HTML_TO_ADF_MAPPING.put("tfoot", "tableFooter");
-        HTML_TO_ADF_MAPPING.put("tr", "tableRow");
-        HTML_TO_ADF_MAPPING.put("th", "tableHeaderCell");
-        HTML_TO_ADF_MAPPING.put("td", "tableCell");
-        
-        // Éléments spéciaux
-        HTML_TO_ADF_MAPPING.put("blockquote", "blockquote");
-        HTML_TO_ADF_MAPPING.put("pre", "codeBlock");
-        HTML_TO_ADF_MAPPING.put("hr", "rule");
-        HTML_TO_ADF_MAPPING.put("br", "hardBreak");
-        HTML_TO_ADF_MAPPING.put("a", "link");
-        HTML_TO_ADF_MAPPING.put("img", "image");
+    // (supprimé) Ancienne map de correspondance HTML->ADF non utilisée
+    
+    /**
+     * Sets the image upload manager for handling external images.
+     */
+    public void setImageUploadManager(ImageUploadManager imageUploadManager) {
+        this.imageUploadManager = imageUploadManager;
+    }
+    
+    /**
+     * Sets the current page ID context for image uploads.
+     */
+    public void setCurrentPageId(String pageId) {
+        this.currentPageId = pageId;
+    }
+    
+    /**
+     * Sets the diagram resolver function for handling local diagram files.
+     * 
+     * @param diagramResolver function that resolves view keys to local diagram files
+     */
+    public void setDiagramResolver(Function<String, File> diagramResolver) {
+        this.diagramResolver = diagramResolver;
     }
     
     
@@ -104,9 +82,8 @@ public class HtmlToAdfConverter {
             return doc;
             
         } catch (Exception e) {
-            logger.error("Error converting HTML to ADF, falling back to basic conversion", e);
-            // Fallback: create document without post-processing
-            return convertToAdfWithoutPostProcessing(htmlContent, title);
+            logger.error("Error converting HTML to ADF", e);
+            throw new IllegalStateException("Conversion HTML vers ADF échouée: " + (title != null ? title : "(sans titre)"), e);
         }
     }
 
@@ -144,20 +121,16 @@ public class HtmlToAdfConverter {
             
             // Process tables using the post-processor (only once)
             String processedJson = AdfTablePostProcessor.postProcessTables(adfJson);
+
+            // Enforce center alignment for paragraphs/headings/mediaSingle across the document
+            processedJson = AdfAlignmentPostProcessor.centerAlignAll(processedJson);
             
             logger.info("Successfully converted HTML to ADF JSON with native tables");
             return processedJson;
             
         } catch (Exception e) {
             logger.error("Error converting HTML to ADF JSON", e);
-            // Fallback: create simple text document
-            Document fallback = createFallbackDocument(title, htmlContent);
-            try {
-                return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(fallback);
-            } catch (Exception e2) {
-                logger.error("Error creating fallback JSON", e2);
-                return "{\"version\":1,\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Error converting content\"}]}]}";
-            }
+            throw new IllegalStateException("Conversion HTML vers ADF JSON échouée: " + (title != null ? title : "(sans titre)"), e);
         }
     }
 
@@ -183,82 +156,13 @@ public class HtmlToAdfConverter {
             
         } catch (Exception e) {
             logger.error("Error converting HTML to ADF", e);
-            // Fallback: create simple text document
-            return createFallbackDocument(title, htmlContent);
+            throw new IllegalStateException("Conversion HTML vers ADF échouée (sans post-traitement)", e);
         }
     }
     
-    /**
-     * Post-processes a Document to replace table markers with native ADF table structures.
-     */
-    private Document postProcessTablesInDocument(Document doc) {
-        try {
-            // Convert document to JSON
-            String adfJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(doc);
-            
-            // Process tables using the post-processor
-            String processedJson = AdfTablePostProcessor.postProcessTables(adfJson);
-            
-            // If processing changed the JSON, we need to create a new document
-            if (!adfJson.equals(processedJson)) {
-                logger.debug("Table post-processing modified the document");
-                // Try to convert processed JSON back to Document
-                try {
-                    JsonNode processedNode = objectMapper.readTree(processedJson);
-                    // For now, we'll just log the processed JSON since Document reconstruction is complex
-                    logger.info("Tables successfully converted to native ADF format");
-                    logger.debug("Processed ADF with native tables: {}", processedJson);
-                } catch (Exception e) {
-                    logger.warn("Could not parse processed JSON", e);
-                }
-            }
-            
-            logger.info("Successfully converted HTML to ADF document");
-            return doc;
-            
-        } catch (Exception e) {
-            logger.warn("Error during table post-processing, returning original document", e);
-            return doc;
-        }
-    }
     
-    /**
-     * Converts multiple HTML sections to ADF document.
-     * 
-     * @param sections map of section titles to HTML content
-     * @param mainTitle the main document title
-     * @return ADF document
-     */
-    public Document convertSectionsToAdf(Map<String, String> sections, String mainTitle) {
-        logger.info("Converting {} sections to ADF document: {}", sections.size(), mainTitle);
-        
-        try {
-            Document doc = Document.create();
-            
-            // Process each section (no main title added - Confluence handles page titles)
-            for (Map.Entry<String, String> section : sections.entrySet()) {
-                String sectionTitle = section.getKey();
-                String sectionContent = section.getValue();
-                
-                // Add section heading
-                doc = doc.h2(sectionTitle);
-                
-                // Process section content
-                doc = processHtmlContent(doc, sectionContent);
-                
-                // Add spacing between sections
-                doc = doc.paragraph("");
-            }
-            
-            logger.info("Successfully converted {} sections to ADF document", sections.size());
-            return doc;
-            
-        } catch (Exception e) {
-            logger.error("Error converting sections to ADF", e);
-            // Fallback: create simple text document
-            return createFallbackDocument(mainTitle, sections.toString());
-        }
-    }
+    
+    
     
     /**
      * Processes HTML content and converts it to ADF elements using JSoup parser.
@@ -282,9 +186,8 @@ public class HtmlToAdfConverter {
             }
             
         } catch (Exception e) {
-            logger.warn("Error parsing HTML with JSoup, falling back to simple processing", e);
-            // Fallback to simple text processing
-            doc = doc.paragraph(cleanText(htmlContent));
+            logger.warn("Error parsing HTML with JSoup", e);
+            throw new IllegalStateException("Parsing HTML échoué", e);
         }
         
         return doc;
@@ -425,16 +328,21 @@ public class HtmlToAdfConverter {
             case "q":
                 return doc.paragraph("\"" + getElementText(element) + "\"");
             
-            // Inline formatting - process as text
+            // Inline formatting - process with native ADF marks
             case "span":
+                return processInlineElementAsFormattedParagraph(doc, element, null);
             case "strong":
             case "b":
+                return processInlineElementAsFormattedParagraph(doc, element, "strong");
             case "em":
             case "i":
+                return processInlineElementAsFormattedParagraph(doc, element, "em");
             case "u":
+                return processInlineElementAsFormattedParagraph(doc, element, "underline");
             case "s":
+                return processInlineElementAsFormattedParagraph(doc, element, "strike");
             case "code":
-                return doc.paragraph(getElementText(element));
+                return processInlineElementAsFormattedParagraph(doc, element, "code");
             
             // Skip structure elements
             case "thead":
@@ -590,83 +498,6 @@ public class HtmlToAdfConverter {
     }
     
     /**
-     * Extracts text content from HTML element, preserving some inline formatting.
-     */    /**
-     * Extracts text from an element while preserving basic formatting through markdown-like syntax.
-     */
-    private String extractFormattedText(Element element) {
-        StringBuilder result = new StringBuilder();
-        
-        for (org.jsoup.nodes.Node node : element.childNodes()) {
-            if (node instanceof org.jsoup.nodes.TextNode) {
-                // Texte direct avec décodage des entités HTML
-                String text = ((org.jsoup.nodes.TextNode) node).text();
-                text = cleanText(text); // Cette méthode décode maintenant les entités HTML
-                result.append(text);
-            } else if (node instanceof Element) {
-                Element childElement = (Element) node;
-                String tagName = childElement.tagName().toLowerCase();
-                String innerText = cleanText(childElement.text()); // Décodage des entités HTML
-                
-                switch (tagName) {
-                    case "strong":
-                    case "b":
-                        result.append("**").append(innerText).append("**");
-                        break;
-                    case "em":
-                    case "i":
-                        result.append("*").append(innerText).append("*");
-                        break;
-                    case "u":
-                        result.append("_").append(innerText).append("_");
-                        break;
-                    case "s":
-                    case "strike":
-                    case "del":
-                        result.append("~~").append(innerText).append("~~");
-                        break;
-                    case "code":
-                    case "kbd":
-                    case "samp":
-                    case "var":
-                        result.append("`").append(innerText).append("`");
-                        break;
-                    case "sub":
-                        result.append("~").append(innerText).append("~");
-                        break;
-                    case "sup":
-                        result.append("^").append(innerText).append("^");
-                        break;
-                    case "a":
-                        String href = childElement.attr("href");
-                        if (!href.isEmpty()) {
-                            result.append("[").append(innerText).append("](").append(href).append(")");
-                        } else {
-                            result.append(innerText);
-                        }
-                        break;
-                    case "mark":
-                        // Surlignage avec une notation spéciale
-                        result.append("==").append(innerText).append("==");
-                        break;
-                    case "small":
-                        result.append("(").append(innerText).append(")");
-                        break;
-                    case "br":
-                        result.append("\n");
-                        break;
-                    default:
-                        // Pour les autres balises, traitement récursif
-                        result.append(extractFormattedText(childElement));
-                        break;
-                }
-            }
-        }
-        
-        return result.toString();
-    }
-    
-    /**
      * Processes an unordered list element.
      */
     private Document processBulletList(Document doc, Element element) {
@@ -802,9 +633,8 @@ public class HtmlToAdfConverter {
             return injectNativeAdfNode(result, tableNode);
             
         } catch (Exception e) {
-            logger.warn("Error processing table as native ADF, falling back to structured format", e);
-            // Fallback to the improved pipe-separated format
-            return processTableFallback(doc, table);
+            logger.warn("Error processing table as native ADF", e);
+            throw new IllegalStateException("Traitement de tableau ADF natif échoué", e);
         }
     }
     
@@ -830,78 +660,46 @@ public class HtmlToAdfConverter {
             throw new RuntimeException("Failed to inject native ADF table", e);
         }
     }
-    
+
     /**
-     * Fallback method that creates a more structured table representation
-     * when native ADF table injection fails.
+     * Injects a native ADF node (generic) into the document using a generic marker.
+     * Used for structures not supported by the ADF Builder (e.g., mediaSingle sizing control).
      */
-    private Document processTableFallback(Document doc, Element table) {
+    private Document injectGenericAdfNode(Document doc, ObjectNode adfNode) {
         try {
-            // Add table separator for clarity
-            doc = doc.rule();
-            
-            // Get all rows to determine structure
-            Elements allRows = table.select("tr");
-            if (allRows.isEmpty()) {
-                return doc.paragraph("Empty table");
-            }
-            
-            // Find header rows (containing th elements or in thead)
-            Elements headerRows = table.select("thead tr, tr:has(th)");
-            Elements bodyRows = table.select("tbody tr, tr:not(:has(th))");
-            
-            // If no explicit header/body distinction, treat first row as header if it contains th
-            if (headerRows.isEmpty() && bodyRows.isEmpty()) {
-                bodyRows = allRows;
-            }
-            
-            // Process headers if they exist
-            if (!headerRows.isEmpty()) {
-                Elements headerCells = headerRows.first().select("th, td");
-                if (!headerCells.isEmpty()) {
-                    // Create header row as emphasized paragraphs
-                    StringBuilder headerText = new StringBuilder();
-                    for (int i = 0; i < headerCells.size(); i++) {
-                        if (i > 0) headerText.append(" | ");
-                        headerText.append(getElementText(headerCells.get(i)).trim());
-                    }
-                    doc = doc.paragraph("📋 " + headerText.toString());
-                    
-                    // Add separator line
-                    StringBuilder separator = new StringBuilder();
-                    for (int i = 0; i < headerCells.size(); i++) {
-                        if (i > 0) separator.append(" | ");
-                        separator.append("---");
-                    }
-                    doc = doc.paragraph(separator.toString());
-                }
-            }
-            
-            // Process body rows
-            for (Element row : bodyRows) {
-                Elements cells = row.select("td, th");
-                if (!cells.isEmpty()) {
-                    StringBuilder rowText = new StringBuilder();
-                    for (int i = 0; i < cells.size(); i++) {
-                        if (i > 0) rowText.append(" | ");
-                        String cellText = getElementText(cells.get(i)).trim();
-                        if (cellText.isEmpty()) cellText = " ";
-                        rowText.append(cellText);
-                    }
-                    doc = doc.paragraph(rowText.toString());
-                }
-            }
-            
-            // Add table separator for clarity
-            doc = doc.rule();
-            
-            return doc;
+            String adfJson = objectMapper.writeValueAsString(adfNode);
+            logger.debug("Generated native ADF node: {}", adfJson);
+            return doc.paragraph("<!-- ADF_NODE_START -->" + adfJson + "<!-- ADF_NODE_END -->");
         } catch (Exception e) {
-            logger.warn("Error processing table fallback, using simple text representation", e);
-            // Ultimate fallback to simple text representation
-            return doc.paragraph("Table content: " + getElementText(table));
+            logger.warn("Failed to inject generic native ADF node", e);
+            throw new RuntimeException("Failed to inject native ADF node", e);
         }
     }
+
+    /**
+     * Builds and injects a mediaSingle node referencing an Atlassian Media file by id/collection
+     * without width/height so Confluence uses the image's original size.
+     */
+    private Document injectMediaSingleNode(Document doc, String fileId, String collection) {
+        ObjectNode mediaSingle = objectMapper.createObjectNode();
+        mediaSingle.put("type", "mediaSingle");
+
+        ArrayNode content = objectMapper.createArrayNode();
+        ObjectNode media = objectMapper.createObjectNode();
+        media.put("type", "media");
+        ObjectNode attrs = objectMapper.createObjectNode();
+        attrs.put("type", "file");
+        attrs.put("id", fileId);
+        attrs.put("collection", collection);
+        media.set("attrs", attrs);
+        content.add(media);
+        mediaSingle.set("content", content);
+
+        // Do NOT set width/height to preserve original size
+        return injectGenericAdfNode(doc, mediaSingle);
+    }
+    
+    
 
     /**
      * Processes a blockquote element with native ADF blockquote.
@@ -966,16 +764,7 @@ public class HtmlToAdfConverter {
         return doc;
     }
     
-    /**
-     * Processes semantic block elements (header, footer, main, nav, aside).
-     */
-    private Document processSemanticBlock(Document doc, Element element, String tagName) {
-        String text = getElementText(element);
-        if (!text.trim().isEmpty()) {
-            return doc.h3(tagName.toUpperCase() + ": " + text);
-        }
-        return doc;
-    }
+    
     
     /**
      * Processes figure elements.
@@ -1054,18 +843,142 @@ public class HtmlToAdfConverter {
         String alt = element.attr("alt");
         String title = element.attr("title");
         
-        StringBuilder imageText = new StringBuilder("Image");
-        if (!src.isEmpty()) {
-            imageText.append(": ").append(src);
-        }
-        if (!alt.isEmpty()) {
-            imageText.append(" (").append(alt).append(")");
-        }
-        if (!title.isEmpty()) {
-            imageText.append(" - ").append(title);
+        if (src.isEmpty()) {
+            // Fallback to text description if no src
+            return doc.paragraph("Image: (no source)");
         }
         
-        return doc.paragraph(imageText.toString());
+        // Check if this is a local diagram placeholder
+        if (src.startsWith("local:diagram:")) {
+            String viewKey = src.substring("local:diagram:".length());
+            return processLocalDiagram(doc, viewKey, alt, title);
+        }
+        
+        try {
+            String imageId = generateImageId(src);
+            String caption = title.isEmpty() ? alt : title;
+            
+            if (isExternalUrl(src) && imageUploadManager != null && currentPageId != null) {
+                // External image - download and upload as attachment
+                try {
+                    String attachmentFilename = imageUploadManager.downloadAndUploadImage(src, currentPageId);
+
+                    // Try to use Atlassian Media identifiers if available
+                    ImageUploadManager.MediaUploadResult info = imageUploadManager.getMediaInfo(src);
+                    if (info != null && info.fileId() != null && info.collectionName() != null) {
+                        String fileId = info.fileId();
+                        String collection = info.collectionName();
+                        // Use mediaSingle without explicit sizing to keep original image size
+                        return injectMediaSingleNode(doc, fileId, collection);
+                    }
+
+                    // Fallback to previous filename-based behavior
+                    return doc.mediaGroup(mediaGroup -> {
+                        if (!caption.isEmpty()) {
+                            mediaGroup.file(imageId, attachmentFilename, caption);
+                        } else {
+                            mediaGroup.file(imageId, attachmentFilename);
+                        }
+                    });
+                    
+                } catch (Exception e) {
+                    logger.warn("Failed to download and upload external image: {}, falling back to text", src, e);
+                    // Fallback to text description for external images that can't be uploaded
+                    StringBuilder imageText = new StringBuilder("Image (external)");
+                    if (!alt.isEmpty()) {
+                        imageText.append(": ").append(alt);
+                    }
+                    if (!title.isEmpty()) {
+                        imageText.append(" - ").append(title);
+                    }
+                    return doc.paragraph(imageText.toString());
+                }
+            } else {
+                // Local/attached image - use file type as before
+                return doc.mediaGroup(mediaGroup -> {
+                    if (!caption.isEmpty()) {
+                        mediaGroup.file(imageId, src, caption);
+                    } else {
+                        mediaGroup.file(imageId, src);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to create native ADF media node for image: {}, falling back to text", src, e);
+            // Fallback to text description
+            StringBuilder imageText = new StringBuilder("Image");
+            if (!src.isEmpty()) {
+                imageText.append(": ").append(src);
+            }
+            if (!alt.isEmpty()) {
+                imageText.append(" (").append(alt).append(")");
+            }
+            if (!title.isEmpty()) {
+                imageText.append(" - ").append(title);
+            }
+            
+            return doc.paragraph(imageText.toString());
+        }
+    }
+    
+    /**
+     * Processes local diagram files.
+     * 
+     * @param doc the ADF document
+     * @param viewKey the diagram view key
+     * @param alt alternative text
+     * @param title title text
+     * @return updated ADF document
+     */
+    private Document processLocalDiagram(Document doc, String viewKey, String alt, String title) {
+        if (diagramResolver == null) {
+            // No diagram resolver - fallback to text
+            logger.debug("No diagram resolver configured for view key: {}", viewKey);
+            return doc.paragraph("Diagram: " + viewKey + (alt.isEmpty() ? "" : " (" + alt + ")"));
+        }
+        
+        try {
+            File diagramFile = diagramResolver.apply(viewKey);
+            if (diagramFile == null || !diagramFile.exists()) {
+                logger.warn("Local diagram file not found for view key: {}", viewKey);
+                return doc.paragraph("Diagram not found: " + viewKey);
+            }
+            
+            if (imageUploadManager == null || currentPageId == null) {
+                logger.warn("No image upload manager or page ID configured for diagram: {}", viewKey);
+                return doc.paragraph("Diagram available but cannot upload: " + viewKey);
+            }
+            String attachmentFilename = imageUploadManager.uploadLocalFile(diagramFile, currentPageId);
+
+            // Prefer Atlassian Media identifiers when available
+            ImageUploadManager.MediaUploadResult info = imageUploadManager.getMediaInfo("local:" + diagramFile.getAbsolutePath());
+
+            // Create media group with the uploaded diagram
+            String imageId = generateImageId(diagramFile.getName());
+            String caption = title.isEmpty() ? alt : title;
+            
+            logger.info("Successfully uploaded local diagram: {} -> {}", diagramFile.getName(), attachmentFilename);
+
+            if (info != null && info.fileId() != null && info.collectionName() != null) {
+                String fileId = info.fileId();
+                String collection = info.collectionName();
+                // Inject mediaSingle without explicit size to preserve original size
+                return injectMediaSingleNode(doc, fileId, collection);
+            }
+
+            // Fallback to filename-based behavior
+            return doc.mediaGroup(mediaGroup -> {
+                if (!caption.isEmpty()) {
+                    mediaGroup.file(imageId, attachmentFilename, caption);
+                } else {
+                    mediaGroup.file(imageId, attachmentFilename);
+                }
+            });
+            
+        } catch (Exception e) {
+            logger.error("Failed to process local diagram for view key: {}", viewKey, e);
+            return doc.paragraph("Error loading diagram: " + viewKey + " - " + e.getMessage());
+        }
     }
     
     /**
@@ -1220,16 +1133,7 @@ public class HtmlToAdfConverter {
         return decodedText.trim().replaceAll("\\s+", " ");
     }
     
-    /**
-     * Creates a fallback ADF document when conversion fails.
-     */
-    private Document createFallbackDocument(String title, String content) {
-        logger.warn("Creating fallback ADF document for: {}", title);
-        
-        return Document.create()
-                .paragraph("Content processing failed. Raw content:")
-                .paragraph(content != null ? content : "No content available");
-    }
+    
     
     /**
      * Détecte si un élément contient du formatage inline (strong, em, code, links avec href, etc.).
@@ -1574,6 +1478,102 @@ public class HtmlToAdfConverter {
         result.add(createNativeLinkText(linkText, href));
         
         return result;
+    }
+
+    /**
+     * Generates a unique ID for an image based on its source URL.
+     */
+    private String generateImageId(String src) {
+        // Generate a simple ID based on the filename or URL
+        if (src.contains("/")) {
+            String filename = src.substring(src.lastIndexOf("/") + 1);
+            // Remove file extension and special characters
+            return filename.replaceAll("\\.[^.]*$", "").replaceAll("[^a-zA-Z0-9_-]", "_");
+        } else {
+            return src.replaceAll("[^a-zA-Z0-9_-]", "_");
+        }
+    }
+    
+    /**
+     * Checks if a URL is external (http/https) or local/relative.
+     */
+    private boolean isExternalUrl(String url) {
+        return url.startsWith("http://") || url.startsWith("https://");
+    }
+
+    /**
+     * Processes a standalone inline formatting element as a paragraph with proper ADF marks.
+     * This handles cases like standalone <strong>, <em>, <code> elements that aren't within a paragraph.
+     */
+    private Document processInlineElementAsFormattedParagraph(Document doc, Element element, String formatType) {
+        try {
+            // Convert the element content to text nodes with formatting
+            List<Text> textNodes = new ArrayList<>();
+            
+            for (org.jsoup.nodes.Node child : element.childNodes()) {
+                if (child instanceof org.jsoup.nodes.TextNode) {
+                    String text = ((org.jsoup.nodes.TextNode) child).text();
+                    if (!text.trim().isEmpty()) {
+                        if (formatType != null) {
+                            textNodes.add(createFormattedText(text, formatType));
+                        } else {
+                            textNodes.add(Text.of(text));
+                        }
+                    }
+                } else if (child instanceof Element) {
+                    // Handle nested elements recursively 
+                    Element childElement = (Element) child;
+                    textNodes.addAll(processNodeToTextNodes(childElement));
+                }
+            }
+            
+            if (!textNodes.isEmpty()) {
+                return doc.paragraph(textNodes.toArray(new Text[0]));
+            } else {
+                // Fallback to simple text extraction
+                String text = getElementText(element);
+                if (!text.trim().isEmpty()) {
+                    if (formatType != null) {
+                        Text formattedText = createFormattedText(text, formatType);
+                        return doc.paragraph(formattedText);
+                    } else {
+                        return doc.paragraph(text);
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.warn("Error processing inline element as formatted paragraph, falling back to simple text", e);
+            // Fallback to simple text extraction
+            String text = getElementText(element);
+            if (!text.trim().isEmpty()) {
+                return doc.paragraph(text);
+            }
+        }
+        
+        return doc;
+    }
+    
+    /**
+     * Creates a Text node with the specified formatting mark using the ADF Builder API.
+     */
+    private Text createFormattedText(String text, String formatType) {
+        Text textNode = Text.of(text);
+        
+        switch (formatType) {
+            case "strong":
+                return textNode.strong();
+            case "em":
+                return textNode.em();
+            case "code":
+                return textNode.code();
+            case "underline":
+                return createNativeFormattedText(text, "underline");
+            case "strike":
+                return createNativeFormattedText(text, "strike");
+            default:
+                return textNode;
+        }
     }
 
     /**

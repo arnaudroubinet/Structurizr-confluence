@@ -30,9 +30,17 @@ target/
 # IDE files
 .idea/
 *.iml
-.vscode/
 .eclipse/
 
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Node.js dependencies
+node_modules/
+package-lock.json
+
+# Diagram export outputs
+target/diagrams/
+*.png
+*.svg

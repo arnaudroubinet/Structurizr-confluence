@@ -2,6 +2,9 @@ package com.structurizr.confluence;
 
 import com.atlassian.adf.Document;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.structurizr.Workspace;
 import com.structurizr.api.StructurizrClientException;
 import com.structurizr.confluence.client.ConfluenceClient;
@@ -10,13 +13,19 @@ import com.structurizr.confluence.client.StructurizrConfig;
 import com.structurizr.confluence.client.StructurizrWorkspaceLoader;
 import com.structurizr.confluence.processor.AsciiDocConverter;
 import com.structurizr.confluence.processor.HtmlToAdfConverter;
+import com.structurizr.confluence.processor.ImageUploadManager;
+import com.structurizr.confluence.processor.DiagramExporter;
+import com.structurizr.confluence.processor.MarkdownConverter;
 import com.structurizr.documentation.Decision;
 import com.structurizr.model.*;
 import com.structurizr.view.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.util.Collection;
+import java.util.List;
+import java.util.function.Function;
 
 /**
  * Exports Structurizr workspace documentation and ADRs to Confluence Cloud in Atlassian Document Format (ADF).
@@ -31,6 +40,8 @@ public class ConfluenceExporter {
     private final StructurizrWorkspaceLoader workspaceLoader;
     private final HtmlToAdfConverter htmlToAdfConverter;
     private final AsciiDocConverter asciiDocConverter;
+    private final MarkdownConverter markdownConverter;
+    private List<File> exportedDiagrams; // Store exported diagrams for use during conversion
     
     /**
      * Creates an exporter that loads workspaces from a Structurizr on-premise instance.
@@ -40,7 +51,8 @@ public class ConfluenceExporter {
         this.objectMapper = new ObjectMapper();
         this.workspaceLoader = new StructurizrWorkspaceLoader(structurizrConfig);
         this.htmlToAdfConverter = new HtmlToAdfConverter();
-        this.asciiDocConverter = new AsciiDocConverter();
+    this.asciiDocConverter = new AsciiDocConverter();
+    this.markdownConverter = new MarkdownConverter();
     }
     
     /**
@@ -51,7 +63,8 @@ public class ConfluenceExporter {
         this.objectMapper = new ObjectMapper();
         this.workspaceLoader = null;
         this.htmlToAdfConverter = new HtmlToAdfConverter();
-        this.asciiDocConverter = new AsciiDocConverter();
+    this.asciiDocConverter = new AsciiDocConverter();
+    this.markdownConverter = new MarkdownConverter();
     }
     
     /**
@@ -78,6 +91,36 @@ public class ConfluenceExporter {
     public void export(Workspace workspace, String branchName) throws Exception {
         logger.info("Starting export of workspace '{}' (branch '{}') to Confluence", workspace.getName(), branchName);
 
+        // Step 1: Export diagrams using Puppeteer if environment variables are set
+        String workspaceId = getWorkspaceId(workspace);
+        DiagramExporter diagramExporter = DiagramExporter.fromEnvironment(workspaceId);
+        List<File> exportedDiagrams = null;
+
+        // Export des diagrammes: OBLIGATOIRE
+        if (diagramExporter == null) {
+            throw new IllegalStateException("L'export des diagrammes via Puppeteer est obligatoire mais les variables d'environnement ne sont pas configurées. Veuillez définir STRUCTURIZR_URL, STRUCTURIZR_USERNAME et STRUCTURIZR_PASSWORD.");
+        }
+
+        try {
+            logger.info("Exporting diagrams using Puppeteer script...");
+            exportedDiagrams = diagramExporter.exportDiagrams(workspace);
+            logger.info("Successfully exported {} diagrams", exportedDiagrams.size());
+        } catch (Exception e) {
+            throw new IllegalStateException("Echec de l'export des diagrammes via Puppeteer. Arrêt du processus.", e);
+        }
+
+        // Store exported diagrams for use by converters
+        this.exportedDiagrams = exportedDiagrams;
+        
+        // Configure converters to use local diagrams if available
+        if (exportedDiagrams != null) {
+            Function<String, File> diagramResolver = this::getDiagramFile;
+            asciiDocConverter.setDiagramResolver(diagramResolver);
+            htmlToAdfConverter.setDiagramResolver(diagramResolver);
+            logger.info("Configured converters to use {} local diagram files", exportedDiagrams.size());
+        }
+
+        // Step 2: Continue with normal export process
         // Générer la page principale avec le nom de la branche
         String mainPageTitle = branchName;
         Document mainDoc = generateWorkspaceDocumentation(workspace, branchName);
@@ -88,47 +131,93 @@ public class ConfluenceExporter {
 
         logger.info("Main page created/updated with ID: {}", mainPageId);
 
-        // Créer la page Documentation sous la page principale
+        // Créer d'abord la page Documentation sous la page principale pour obtenir un pageId (nécéssaire aux uploads)
         String documentationPageTitle = "Documentation";
-        Document documentationDoc = Document.create()
-            .h1("Documentation")
-            .paragraph("Cette page contient la documentation du workspace. Voir les sous-pages pour chaque section.")
-            .h2("Sommaire");
-
-        // Générer la liste des sections de documentation pour le sommaire
-        if (workspace.getDocumentation() != null && !workspace.getDocumentation().getSections().isEmpty()) {
-            documentationDoc.bulletList(list -> {
-                for (com.structurizr.documentation.Section section : workspace.getDocumentation().getSections()) {
-                    String sectionTitle = section.getTitle() != null && !section.getTitle().isEmpty() ? section.getTitle() : section.getFilename();
-                    String pageTitle = branchName + " - " + sectionTitle;
-                    list.item(pageTitle);
-                }
-            });
-        } else {
-            documentationDoc.paragraph("Aucune section de documentation trouvée dans le workspace.");
-        }
-
         String documentationPageId = confluenceClient.createOrUpdatePage(
             documentationPageTitle,
-            convertDocumentToJson(documentationDoc),
+            "{\"version\":1,\"type\":\"doc\",\"content\":[]}",
             mainPageId
         );
         logger.info("Documentation page created/updated with ID: {}", documentationPageId);
 
-        // Exporter la documentation du workspace (sections) sous la page Documentation
-        exportWorkspaceDocumentationSections(workspace, documentationPageId, branchName);
+        // Configurer l’upload d’images pour la page Documentation
+        ImageUploadManager docImageUploadManager = new ImageUploadManager(confluenceClient);
+        htmlToAdfConverter.setImageUploadManager(docImageUploadManager);
+        htmlToAdfConverter.setCurrentPageId(documentationPageId);
 
-    // Générer les pages de vues
-    exportViews(workspace, mainPageId);
+        // Construire le contenu ADF de la page Documentation (TOC + sections)
+        Document documentationDoc = Document.create();
+
+        // Insérer un sommaire Confluence via macro ADF (TOC), puis intégrer les sections
+        String documentationJson = convertDocumentToJson(documentationDoc);
+        ObjectNode documentationNode = objectMapper.readTree(documentationJson) instanceof ObjectNode
+            ? (ObjectNode) objectMapper.readTree(documentationJson)
+            : objectMapper.createObjectNode();
+        ArrayNode docContent = documentationNode.has("content") && documentationNode.get("content").isArray()
+            ? (ArrayNode) documentationNode.get("content")
+            : documentationNode.putArray("content");
+
+        // Macro TOC Confluence (table of contents)
+        ObjectNode tocNode = objectMapper.createObjectNode();
+        tocNode.put("type", "extension");
+        ObjectNode extAttrs = objectMapper.createObjectNode();
+        // ADF macro format requires extensionType + extensionKey (macro name)
+        // https://developer.atlassian.com/platform/forge/adopting-forge-from-connect-migrate-macro
+        extAttrs.put("extensionType", "com.atlassian.confluence.macro.core");
+        extAttrs.put("extensionKey", "toc");
+        // Options par défaut (laisser Confluence gérer), pas de paramètres requis
+        tocNode.set("attrs", extAttrs);
+        docContent.add(tocNode);
+
+        if (workspace.getDocumentation() != null && !workspace.getDocumentation().getSections().isEmpty()) {
+            for (com.structurizr.documentation.Section section : workspace.getDocumentation().getSections()) {
+                String filenameFallback = section.getFilename();
+                String content = section.getContent();
+
+                String htmlContent;
+                String formatName = section.getFormat() != null ? section.getFormat().name() : "";
+                if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
+                    String workspaceId2 = getWorkspaceId(workspace);
+                    htmlContent = asciiDocConverter.convertToHtml(content, filenameFallback, workspaceId2, branchName);
+                } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
+                    htmlContent = markdownConverter.toHtml(content);
+                } else {
+                    htmlContent = content;
+                }
+
+                // Extraire puis ignorer le titre H1 éventuel (le H1 est retiré du contenu et ne doit pas être ajouté en tête)
+                // Pas d'ajout de H2 basé sur le H1 ou le nom de fichier
+                htmlToAdfConverter.extractPageTitleOnly(htmlContent);
+
+                // Convertir le HTML de la section en ADF JSON (avec post-traitements)
+                String sectionAdfJson = htmlToAdfConverter.convertToAdfJson(htmlContent, filenameFallback);
+                ObjectNode sectionDocNode = objectMapper.readTree(sectionAdfJson) instanceof ObjectNode
+                    ? (ObjectNode) objectMapper.readTree(sectionAdfJson)
+                    : objectMapper.createObjectNode();
+                JsonNode sectionContent = sectionDocNode.get("content");
+                if (sectionContent != null && sectionContent.isArray()) {
+                    for (JsonNode child : sectionContent) {
+                        docContent.add(child);
+                    }
+                }
+            }
+        }
+
+        String finalDocumentationJson = objectMapper.writeValueAsString(documentationNode);
+
+        // Mettre à jour la page Documentation avec le contenu complet (images uploadées sur cette page)
+        confluenceClient.updatePageById(documentationPageId, documentationPageTitle, finalDocumentationJson);
+        logger.info("Documentation page content updated (ID: {})", documentationPageId);
+        // Ne plus créer de sous-pages pour les sections: contenu déjà inliné ci-dessus
+
+    // Générer une seule page avec toutes les vues (toutes les images de diagrammes)
+    exportAllViewsSinglePage(workspace, mainPageId);
 
     // Générer la documentation du modèle
     exportModel(workspace, mainPageId);
 
     // Générer les ADRs
     exportDecisions(workspace, mainPageId, branchName);
-
-    // Générer la page Schémas
-    exportDiagramsPage(mainPageId, workspace);
 
     logger.info("Workspace export completed successfully");
     }
@@ -180,7 +269,8 @@ public class ConfluenceExporter {
 
         // Exporter chaque section comme page Confluence
         for (com.structurizr.documentation.Section section : workspace.getDocumentation().getSections()) {
-            String sectionTitle = section.getTitle() != null && !section.getTitle().isEmpty() ? section.getTitle() : section.getFilename();
+            // Ignorer le titre de section déclaré dans le workspace
+            String filenameFallback = section.getFilename();
             String content = section.getContent();
 
             // Déterminer le format et convertir si nécessaire
@@ -188,28 +278,42 @@ public class ConfluenceExporter {
             String formatName = section.getFormat() != null ? section.getFormat().name() : "";
             
             if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
-                logger.debug("Converting AsciiDoc content for section: {}", sectionTitle);
+                logger.debug("Converting AsciiDoc content for section (filename: {})", filenameFallback);
                 String workspaceId = getWorkspaceId(workspace);
-                htmlContent = asciiDocConverter.convertToHtml(content, sectionTitle, workspaceId, branchName);
+                // Passer le filename comme titre indicatif uniquement (log), pas de prise en compte fonctionnelle
+                htmlContent = asciiDocConverter.convertToHtml(content, filenameFallback, workspaceId, branchName);
             } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
-                logger.debug("Markdown content detected for section: {} (treating as HTML)", sectionTitle);
-                // Pour Markdown, on pourrait ajouter un convertisseur Markdown->HTML plus tard
-                htmlContent = content; // Traitement basique pour l'instant
+                logger.debug("Markdown content detected for section (filename: {}): converting to HTML for title extraction", filenameFallback);
+                // Conversion Markdown robuste avec extensions
+                htmlContent = markdownConverter.toHtml(content);
             } else {
-                logger.debug("Treating content as HTML for section: {} (format: {})", sectionTitle, formatName);
+                logger.debug("Treating content as HTML for section (filename: {}), format: {}", filenameFallback, formatName);
                 htmlContent = content; // Assume HTML ou texte brut
             }
 
             // Extraire le titre du contenu HTML (premier H1) si disponible
             String extractedTitle = htmlToAdfConverter.extractPageTitleOnly(htmlContent);
-            String actualTitle = extractedTitle != null && !extractedTitle.trim().isEmpty() ? extractedTitle : sectionTitle;
+            // Nouvelle règle: utiliser le H1 comme titre de page; sinon fallback sur le nom de fichier
+            String actualTitle = (extractedTitle != null && !extractedTitle.trim().isEmpty()) ? extractedTitle : filenameFallback;
+            
+            // Setup image upload manager for this page
+            ImageUploadManager imageUploadManager = new ImageUploadManager(confluenceClient);
+            htmlToAdfConverter.setImageUploadManager(imageUploadManager);
+            
+            // Create page first to get the page ID for image uploads
+            // Title policy: use first H1 if present; otherwise fallback to filename (no branch prefix)
+            String pageTitle = actualTitle;
+            String pageId = confluenceClient.createOrUpdatePage(pageTitle, "{\"version\":1,\"type\":\"doc\",\"content\":[]}", parentPageId);
+            
+            // Set page context for image uploads
+            htmlToAdfConverter.setCurrentPageId(pageId);
             
             // Convertir HTML vers ADF JSON pour Confluence avec support des tables natives
             String adfJson = htmlToAdfConverter.convertToAdfJson(htmlContent, actualTitle);
 
-            String pageTitle = branchName + " - " + actualTitle;
-            String pageId = confluenceClient.createOrUpdatePage(pageTitle, adfJson, parentPageId);
-            logger.info("Section '{}' exportée vers la page ID: {}", sectionTitle, pageId);
+            // Update page with actual content
+            confluenceClient.updatePageById(pageId, pageTitle, adfJson);
+            logger.info("Section (filename: '{}') exportée vers la page ID: {} avec le titre: '{}'", filenameFallback, pageId, pageTitle);
         }
     }
     
@@ -223,61 +327,19 @@ public class ConfluenceExporter {
 
     
     private Document generateWorkspaceDocumentation(Workspace workspace, String branchName) {
-        Document doc = Document.create()
-            .h1(branchName);
+        // Ne pas répéter le titre de page en H1 dans le corps
+        Document doc = Document.create();
 
         // Description
         if (workspace.getDescription() != null && !workspace.getDescription().trim().isEmpty()) {
             doc.paragraph(workspace.getDescription());
         }
 
-        // Table of Contents
-        doc.h2("Table of Contents");
-
-        // Add views section
+        // Add views section overview only (pas de sommaire manuel)
         ViewSet views = workspace.getViews();
+
+        // Views Overview (sections uniquement, pas de titre global)
         if (hasViews(views)) {
-            doc.bulletList(tocList -> {
-                tocList.item("Views");
-
-                if (!views.getSystemLandscapeViews().isEmpty()) {
-                    tocList.item("System Landscape Views");
-                }
-                if (!views.getSystemContextViews().isEmpty()) {
-                    tocList.item("System Context Views");
-                }
-                if (!views.getContainerViews().isEmpty()) {
-                    tocList.item("Container Views");
-                }
-                if (!views.getComponentViews().isEmpty()) {
-                    tocList.item("Component Views");
-                }
-                if (!views.getDeploymentViews().isEmpty()) {
-                    tocList.item("Deployment Views");
-                }
-
-                tocList.item("Model Documentation");
-
-                // Add ADRs to table of contents if they exist
-                if (workspace.getDocumentation() != null && !workspace.getDocumentation().getDecisions().isEmpty()) {
-                    tocList.item("Architecture Decision Records");
-                }
-            });
-        } else {
-            doc.bulletList(tocList -> {
-                tocList.item("Model Documentation");
-
-                // Add ADRs to table of contents if they exist
-                if (workspace.getDocumentation() != null && !workspace.getDocumentation().getDecisions().isEmpty()) {
-                    tocList.item("Architecture Decision Records");
-                }
-            });
-        }
-
-        // Views Overview
-        if (hasViews(views)) {
-            doc.h2("Views Overview");
-
             addViewsOverview(doc, views.getSystemLandscapeViews(), "System Landscape Views");
             addViewsOverview(doc, views.getSystemContextViews(), "System Context Views");
             addViewsOverview(doc, views.getContainerViews(), "Container Views");
@@ -326,15 +388,83 @@ public class ConfluenceExporter {
         exportViewCategory(views.getComponentViews(), "Component Views", parentPageId);
         exportViewCategory(views.getDeploymentViews(), "Deployment Views", parentPageId);
     }
+
+    /**
+     * Crée une seule page "Views" contenant toutes les vues (diagrammes) exportées.
+     * Chaque vue est rendue avec un titre et l’image correspondante, centrée via mediaSingle.
+     */
+    private void exportAllViewsSinglePage(Workspace workspace, String parentPageId) throws Exception {
+        ViewSet views = workspace.getViews();
+
+        // 1) Créer/mettre à jour une page vide d'abord pour obtenir un pageId (nécéssaire à l'upload des images)
+        String viewsPageId = confluenceClient.createOrUpdatePage(
+            "Views",
+            "{\"version\":1,\"type\":\"doc\",\"content\":[]}",
+            parentPageId
+        );
+
+        // 2) Configurer l’uploader d’images et le contexte de page pour que les images soient attachées à cette page
+        ImageUploadManager imageUploadManager = new ImageUploadManager(confluenceClient);
+        htmlToAdfConverter.setImageUploadManager(imageUploadManager);
+        htmlToAdfConverter.setCurrentPageId(viewsPageId);
+
+        // 3) Construire le contenu ADF de la page "Views"
+        Document viewsDoc = Document.create();
+
+        // Pour chaque catégorie, si non vide, ajouter un titre, puis chaque vue avec description et image
+        viewsDoc = addViewsWithImages(viewsDoc, views.getSystemLandscapeViews(), "System Landscape Views");
+        viewsDoc = addViewsWithImages(viewsDoc, views.getSystemContextViews(), "System Context Views");
+        viewsDoc = addViewsWithImages(viewsDoc, views.getContainerViews(), "Container Views");
+        viewsDoc = addViewsWithImages(viewsDoc, views.getComponentViews(), "Component Views");
+        viewsDoc = addViewsWithImages(viewsDoc, views.getDeploymentViews(), "Deployment Views");
+
+        // 4) Mettre à jour la page avec le contenu complet
+        confluenceClient.updatePageById(viewsPageId, "Views", convertDocumentToJson(viewsDoc));
+        logger.info("Created/updated single Views page with all diagrams (pageId: {})", viewsPageId);
+    }
+
+    /**
+     * Ajoute au document fourni toutes les vues d’une catégorie avec l’image de diagramme correspondante.
+     * Les images sont centrées (géré par HtmlToAdfConverter via mediaSingle layout="center").
+     */
+    private Document addViewsWithImages(Document doc, Collection<? extends View> views, String categoryTitle) {
+        if (views == null || views.isEmpty()) {
+            return doc;
+        }
+
+        doc.h2(categoryTitle);
+
+        for (View view : views) {
+            String viewTitle = view.getTitle();
+            if (viewTitle == null || viewTitle.trim().isEmpty()) {
+                viewTitle = view.getKey() != null ? view.getKey() : "Untitled View";
+            }
+
+            doc.h3(viewTitle);
+
+            if (view.getDescription() != null && !view.getDescription().trim().isEmpty()) {
+                doc.paragraph(view.getDescription());
+            }
+
+            // Insérer l’image du diagramme via placeholder local:diagram:KEY pour déclencher l’upload
+            try {
+                String imgHtml = "<p><img src=\"local:diagram:" + view.getKey() + "\" alt=\"" + viewTitle + "\"></p>";
+                Document imgDoc = htmlToAdfConverter.convertToAdf(imgHtml, viewTitle);
+                doc = combineDocuments(doc, imgDoc);
+            } catch (Exception e) {
+                logger.warn("Failed to embed image for view {} via local placeholder", view.getKey(), e);
+            }
+        }
+        return doc;
+    }
     
     private void exportViewCategory(Collection<? extends View> views, String categoryName, String parentPageId) throws Exception {
         if (views.isEmpty()) {
             return;
         }
         
-        // Create category page
-        Document categoryDoc = Document.create()
-            .h1(categoryName);
+        // Create category page sans H1 (ne pas répéter le titre de page)
+        Document categoryDoc = Document.create();
         
         for (View view : views) {
             categoryDoc.h2(view.getTitle());
@@ -354,8 +484,8 @@ public class ConfluenceExporter {
     private void exportModel(Workspace workspace, String parentPageId) throws Exception {
         Model model = workspace.getModel();
         
-        Document modelDoc = Document.create()
-            .h1("Model Documentation");
+        // Ne pas ajouter le H1 "Model Documentation" en tête du contenu
+        Document modelDoc = Document.create();
         
         // People
         if (!model.getPeople().isEmpty()) {
@@ -438,22 +568,9 @@ public class ConfluenceExporter {
         Collection<Decision> decisions = workspace.getDocumentation().getDecisions();
         logger.info("Exporting {} architecture decision records", decisions.size());
         
-        // Create main ADR page
+        // Create main ADR page (sans H1 dupliqué, laisser Confluence gérer le titre)
         Document adrMainDoc = Document.create()
-            .h1("Architecture Decision Records (ADRs)")
             .paragraph("This page contains all architecture decision records for this project.");
-        
-        // Add table of contents for ADRs
-        adrMainDoc.h2("Decision Records");
-        adrMainDoc.bulletList(list -> {
-            for (Decision decision : decisions) {
-                String itemText = decision.getId() + ": " + decision.getTitle();
-                if (decision.getStatus() != null && !decision.getStatus().trim().isEmpty()) {
-                    itemText += " (" + decision.getStatus() + ")";
-                }
-                list.item(itemText);
-            }
-        });
         
         String adrMainPageId = confluenceClient.createOrUpdatePage(
             "Architecture Decision Records", 
@@ -469,11 +586,10 @@ public class ConfluenceExporter {
     }
     
     private void exportDecision(Decision decision, String parentPageId, Workspace workspace, String branchName) throws Exception {
-        Document decisionDoc = Document.create()
-            .h1("ADR " + decision.getId() + ": " + decision.getTitle());
+        Document decisionDoc = Document.create();
         
         // Add decision metadata
-        decisionDoc.h2("Decision Information");
+    decisionDoc.h2("Decision Information");
         decisionDoc.bulletList(list -> {
             list.item("ID: " + decision.getId());
             list.item("Title: " + decision.getTitle());
@@ -500,7 +616,7 @@ public class ConfluenceExporter {
                 htmlContent = asciiDocConverter.convertToHtml(decision.getContent(), "ADR " + decision.getId(), workspaceId, branchName);
             } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
                 logger.debug("Converting Markdown content for ADR: {}", decision.getTitle());
-                htmlContent = convertBasicMarkdownToHtml(decision.getContent());
+                htmlContent = markdownConverter.toHtml(decision.getContent());
             } else {
                 logger.debug("Treating content as HTML for ADR: {} (format: {})", decision.getTitle(), formatName);
                 htmlContent = decision.getContent(); // Assume HTML ou texte brut
@@ -527,84 +643,50 @@ public class ConfluenceExporter {
         logger.info("Created/updated ADR page: {}", pageTitle);
     }
     
-    /**
-     * Generates a Confluence page with workspace diagrams.
-     * For workspaces loaded from Structurizr on-premise, attempts to link to actual diagram images.
-     * For workspaces loaded from JSON files, shows diagram information only.
-     */
-    private void exportDiagramsPage(String parentPageId, Workspace workspace) throws Exception {
-        String workspaceId = getWorkspaceId(workspace);
-        boolean isFromStructurizr = workspaceLoader != null; // Indicates workspace from Structurizr instance
-        
-        Document diagramsDoc = Document.create()
-            .h1("Schémas");
-            
-        if (isFromStructurizr) {
-            String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
-            if (structurizrServerUrl == null) structurizrServerUrl = "https://static.structurizr.com";
-            diagramsDoc.paragraph("Cette page regroupe tous les schémas PNG du workspace Structurizr (serveur: " + structurizrServerUrl + ", workspace: " + workspaceId + ").");
-        } else {
-            diagramsDoc.paragraph("Cette page liste les vues/diagrammes disponibles dans le workspace (chargé depuis un fichier JSON).");
-        }
+    
 
-        if (workspace == null) {
-            diagramsDoc.paragraph("Impossible d'accéder au workspace pour lister les vues.");
-        } else {
-            ViewSet views = workspace.getViews();
-            if (views == null || views.getViews().isEmpty()) {
-                diagramsDoc.paragraph("Aucune vue trouvée dans le workspace.");
-            } else {
-                for (View view : views.getViews()) {
-                    String diagramKey = view.getKey();
-                    String diagramName = view.getTitle() != null && !view.getTitle().isEmpty() ? view.getTitle() : diagramKey;
-                    
-                    diagramsDoc.h2(diagramName);
-                    diagramsDoc.bulletList(list -> {
-                        list.item("Clé : " + diagramKey);
-                        list.item("Type : " + view.getClass().getSimpleName());
-                        if (view.getDescription() != null && !view.getDescription().trim().isEmpty()) {
-                            list.item("Description : " + view.getDescription());
-                        }
-                    });
-                    
-                    if (isFromStructurizr) {
-                        // Try to link to actual diagram images for Structurizr workspaces
-                        String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
-                        if (structurizrServerUrl == null) structurizrServerUrl = "https://static.structurizr.com";
-                        String pngUrl = structurizrServerUrl + "/workspace/" + workspaceId + "/diagrams/" + diagramKey + ".png";
-                        
-                        // Test if image is accessible
-                        boolean accessible = false;
-                        try {
-                            java.net.URI uri = java.net.URI.create(pngUrl);
-                            java.net.HttpURLConnection connection = (java.net.HttpURLConnection) uri.toURL().openConnection();
-                            connection.setRequestMethod("HEAD");
-                            connection.setConnectTimeout(2000);
-                            connection.setReadTimeout(2000);
-                            int responseCode = connection.getResponseCode();
-                            accessible = (responseCode >= 200 && responseCode < 300);
-                        } catch (Exception e) {
-                            logger.debug("Could not access diagram image at: {}", pngUrl, e);
-                            accessible = false;
-                        }
-                        
-                        if (accessible) {
-                            diagramsDoc.paragraph("![" + diagramName + "](" + pngUrl + ")");
-                        } else {
-                            diagramsDoc.paragraph("⚠️ Image non accessible : " + pngUrl);
-                        }
-                    } else {
-                        // For JSON workspaces, provide placeholder
-                        diagramsDoc.paragraph("📊 Diagramme disponible - pour voir l'image, générez-la avec les outils Structurizr.");
-                    }
-                }
+    /**
+     * Gets the exported diagram file for a given view key.
+     * 
+     * @param viewKey the view key to look for
+     * @return the diagram file or null if not found
+     */
+    public File getDiagramFile(String viewKey) {
+        if (exportedDiagrams == null) {
+            logger.debug("No exported diagrams available for view key: {}", viewKey);
+            return null;
+        }
+        
+        logger.debug("Looking for diagram file for view key: {} among {} exported files", viewKey, exportedDiagrams.size());
+        
+        for (File diagramFile : exportedDiagrams) {
+            String filename = diagramFile.getName();
+            logger.debug("Checking diagram file: {}", filename);
+            
+            // Handle different filename patterns that might be used
+            String fileViewKey = filename;
+            if (filename.contains(".")) {
+                // Remove extension to get the view key
+                fileViewKey = filename.substring(0, filename.lastIndexOf('.'));
+            }
+            
+            // Check for exact match or partial match
+            if (fileViewKey.equals(viewKey) || 
+                fileViewKey.toLowerCase().contains(viewKey.toLowerCase()) ||
+                viewKey.toLowerCase().contains(fileViewKey.toLowerCase())) {
+                logger.info("Found matching diagram file: {} for view key: {}", filename, viewKey);
+                return diagramFile;
             }
         }
-
-        confluenceClient.createOrUpdatePage("Schémas", convertDocumentToJson(diagramsDoc), parentPageId);
-        logger.info("Page 'Schémas' créée/mise à jour sous la page principale.");
+        
+        logger.warn("No diagram file found for view key: {}", viewKey);
+        logger.debug("Available diagram files: {}", exportedDiagrams.stream()
+            .map(File::getName)
+            .toArray());
+        
+        return null;
     }
-
+    
     /**
      * Extracts workspace ID from workspace, using ID property or falling back to a default.
      * 
@@ -617,63 +699,35 @@ public class ConfluenceExporter {
         return String.valueOf(workspaceId);
     }
     
-    /**
-     * Converts basic Markdown syntax to HTML.
-     * Handles headings, paragraphs, links, and basic formatting.
-     */
-    private String convertBasicMarkdownToHtml(String markdown) {
-        if (markdown == null || markdown.trim().isEmpty()) {
-            return "";
-        }
-        
-        String html = markdown;
-        
-        // Convert headings
-        html = html.replaceAll("(?m)^# (.+)$", "<h1>$1</h1>");
-        html = html.replaceAll("(?m)^## (.+)$", "<h2>$1</h2>");
-        html = html.replaceAll("(?m)^### (.+)$", "<h3>$1</h3>");
-        html = html.replaceAll("(?m)^#### (.+)$", "<h4>$1</h4>");
-        html = html.replaceAll("(?m)^##### (.+)$", "<h5>$1</h5>");
-        html = html.replaceAll("(?m)^###### (.+)$", "<h6>$1</h6>");
-        
-        // Convert links: [text](url) -> <a href="url">text</a>
-        html = html.replaceAll("\\[([^\\]]+)\\]\\(([^\\)]+)\\)", "<a href=\"$2\">$1</a>");
-        
-        // Convert simple URL links: http://... -> <a href="...">...</a>
-        html = html.replaceAll("(https?://[^\\s]+)", "<a href=\"$1\">$1</a>");
-        
-        // Convert bold: **text** -> <strong>text</strong>
-        html = html.replaceAll("\\*\\*([^\\*]+)\\*\\*", "<strong>$1</strong>");
-        
-        // Convert italic: *text* -> <em>text</em>
-        html = html.replaceAll("(?<!\\*)\\*([^\\*]+)\\*(?!\\*)", "<em>$1</em>");
-        
-        // Convert line breaks to paragraphs
-        // Split by double line breaks (paragraph separators)
-        String[] paragraphs = html.split("\\n\\s*\\n");
-        StringBuilder result = new StringBuilder();
-        
-        for (String paragraph : paragraphs) {
-            String trimmed = paragraph.trim();
-            if (!trimmed.isEmpty()) {
-                // Skip if already has HTML tags
-                if (!trimmed.matches(".*<h[1-6]>.*</h[1-6]>.*")) {
-                    result.append("<p>").append(trimmed.replace("\n", " ")).append("</p>\n");
-                } else {
-                    result.append(trimmed).append("\n");
-                }
-            }
-        }
-        
-        return result.toString();
-    }
+    
     
     /**
      * Combines two ADF documents by merging their content.
      */
     private Document combineDocuments(Document base, Document addition) {
-        // This is a simplified approach - in practice you'd need proper ADF manipulation
-        // For now, return the addition since it contains the converted content
-        return addition;
+        try {
+            ObjectNode baseNode = objectMapper.valueToTree(base);
+            ObjectNode addNode = objectMapper.valueToTree(addition);
+
+            ArrayNode baseContent;
+            JsonNode baseContentNode = baseNode.get("content");
+            if (baseContentNode != null && baseContentNode.isArray()) {
+                baseContent = (ArrayNode) baseContentNode;
+            } else {
+                baseContent = baseNode.putArray("content");
+            }
+
+            JsonNode addContentNode = addNode.get("content");
+            if (addContentNode != null && addContentNode.isArray()) {
+                for (JsonNode child : addContentNode) {
+                    baseContent.add(child);
+                }
+            }
+
+            return objectMapper.treeToValue(baseNode, Document.class);
+        } catch (Exception e) {
+            logger.warn("Failed to merge ADF documents, keeping base content only", e);
+            return base;
+        }
     }
 }

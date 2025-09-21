@@ -21,6 +21,8 @@ public class AdfTablePostProcessor {
     
     private static final Pattern TABLE_MARKER_PATTERN = 
         Pattern.compile("<!-- ADF_TABLE_START -->(.*?)<!-- ADF_TABLE_END -->", Pattern.DOTALL);
+    private static final Pattern GENERIC_NODE_MARKER_PATTERN =
+        Pattern.compile("<!-- ADF_NODE_START -->(.*?)<!-- ADF_NODE_END -->", Pattern.DOTALL);
     
     /**
      * Processes an ADF document JSON string and replaces table markers with native table structures.
@@ -49,7 +51,7 @@ public class AdfTablePostProcessor {
         if (node.isObject()) {
             ObjectNode objNode = (ObjectNode) node;
             
-            // Check if this is a paragraph with table marker
+            // Check if this is a paragraph with table or generic node marker
             if ("paragraph".equals(objNode.path("type").asText())) {
                 JsonNode contentArray = objNode.path("content");
                 if (contentArray.isArray() && contentArray.size() == 1) {
@@ -68,6 +70,19 @@ public class AdfTablePostProcessor {
                                 return tableNode;
                             } catch (Exception e) {
                                 logger.warn("Failed to parse table JSON from marker: " + tableJson, e);
+                            }
+                        }
+
+                        // Check for generic ADF node marker (e.g., mediaSingle)
+                        Matcher genericMatcher = GENERIC_NODE_MARKER_PATTERN.matcher(text);
+                        if (genericMatcher.find()) {
+                            String nodeJson = genericMatcher.group(1);
+                            try {
+                                JsonNode adfNode = objectMapper.readTree(nodeJson);
+                                logger.debug("Replaced generic ADF node marker with native node");
+                                return adfNode;
+                            } catch (Exception e) {
+                                logger.warn("Failed to parse generic ADF node JSON from marker: " + nodeJson, e);
                             }
                         }
                     }
