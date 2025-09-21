@@ -1,9 +1,10 @@
 # Structurizr Confluence Exporter
 
-A Java library that exports [Structurizr](https://structurizr.com/) workspace documentation and ADRs to Confluence Cloud in Atlassian Document Format (ADF). Can load workspaces from Structurizr on-premise instances or work with provided workspace objects.
+A Java library and CLI tool that exports [Structurizr](https://structurizr.com/) workspace documentation and ADRs to Confluence Cloud in Atlassian Document Format (ADF). Can load workspaces from Structurizr on-premise instances or work with provided workspace objects.
 
 ## Features
 
+- **🖥️ Command Line Interface** - New Quarkus-based CLI for easy workspace exports
 - Exports Structurizr workspace documentation to Confluence Cloud
 - **Exports Architecture Decision Records (ADRs)** from Structurizr workspaces
 - **Loads workspaces from Structurizr on-premise instances** using the official Structurizr client
@@ -15,12 +16,98 @@ A Java library that exports [Structurizr](https://structurizr.com/) workspace do
 
 ## Requirements
 
-- Java 11 or higher
+- Java 17 or higher
 - Confluence Cloud instance
 - Confluence API token
 - (Optional) Structurizr on-premise instance with API access
 
-## Installation
+## CLI Usage 🚀
+
+The application provides a comprehensive command-line interface built with Quarkus and Picocli.
+
+### Installation
+
+Download the latest release and use the executable JAR:
+
+```bash
+java -jar structurizr-confluence-1.0.0.jar --help
+```
+
+### Commands
+
+#### Export Workspace from File
+
+Export a Structurizr workspace JSON file to Confluence:
+
+```bash
+java -jar structurizr-confluence-1.0.0.jar export \
+  --confluence-url https://yourcompany.atlassian.net \
+  --confluence-user your-email@company.com \
+  --confluence-token your-api-token \
+  --confluence-space SPACE \
+  --workspace path/to/workspace.json \
+  --branch main \
+  --clean
+```
+
+Options:
+- `-u, --confluence-url`: Confluence base URL
+- `-e, --confluence-user`: Confluence user email
+- `-t, --confluence-token`: Confluence API token  
+- `-s, --confluence-space`: Confluence space key
+- `-w, --workspace`: Path to Structurizr workspace JSON file
+- `-b, --branch`: Branch name for versioning (default: main)
+- `--clean`: Clean Confluence space before export
+
+#### Clean Confluence Space
+
+Remove all pages from a Confluence space:
+
+```bash
+java -jar structurizr-confluence-1.0.0.jar clean \
+  --confluence-url https://yourcompany.atlassian.net \
+  --confluence-user your-email@company.com \
+  --confluence-token your-api-token \
+  --confluence-space SPACE \
+  --confirm
+```
+
+⚠️ **Warning**: This deletes ALL pages in the specified space. Use `--confirm` to proceed.
+
+#### Load from Structurizr On-Premise
+
+Load workspace from Structurizr on-premise and export to Confluence:
+
+```bash
+java -jar structurizr-confluence-1.0.0.jar load \
+  --structurizr-url https://structurizr.yourcompany.com \
+  --structurizr-key your-api-key \
+  --structurizr-secret your-api-secret \
+  --workspace-id 12345 \
+  --confluence-url https://yourcompany.atlassian.net \
+  --confluence-user your-email@company.com \
+  --confluence-token your-api-token \
+  --confluence-space SPACE \
+  --clean
+```
+
+### Environment Variables
+
+You can use environment variables instead of command-line options:
+
+```bash
+export CONFLUENCE_URL="https://yourcompany.atlassian.net"
+export CONFLUENCE_USER="your-email@company.com"
+export CONFLUENCE_TOKEN="your-api-token"
+export CONFLUENCE_SPACE_KEY="SPACE"
+
+# Then use without specifying credentials
+java -jar structurizr-confluence-1.0.0.jar export --workspace workspace.json
+```
+
+## Library Usage 📚
+
+### Installation
 
 Add the dependency to your Maven project:
 
@@ -31,8 +118,6 @@ Add the dependency to your Maven project:
     <version>1.0.0</version>
 </dependency>
 ```
-
-## Usage
 
 ### Basic Usage
 
