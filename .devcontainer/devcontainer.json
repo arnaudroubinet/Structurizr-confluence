@@ -9,7 +9,7 @@
     "ghcr.io/devcontainers/features/node:1": {
       "version": "latest"
     },
-    "ghcr.io/jsburckhardt/devcontainer-features/bat:1": {}
+    "ghcr.io/jsburckhardt/devcontainer-features/uv:1": {}
   },
   "customizations": {
     "vscode": {
