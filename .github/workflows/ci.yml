@@ -5,6 +5,8 @@ on:
     branches: [ "**" ]
   pull_request:
     branches: [ "main" ]
+  release:
+    types: [created]
 
 jobs:
   build:
@@ -25,3 +27,54 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y graphviz
           ./scripts/build.sh
+
+  native-build:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || github.ref == 'refs/heads/main'
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
+      - name: Build native executable
+        run: |
+          mvn clean package -Pnative -DskipTests
+
+      - name: Create release archive
+        if: github.event_name == 'release'
+        run: |
+          mkdir -p release
+          cp target/*-runner release/structurizr-confluence-linux
+          cp README.md release/
+          cp demo/itms-workspace.json release/example-workspace.json
+          tar -czf structurizr-confluence-${{ github.event.release.tag_name }}-linux.tar.gz -C release .
+
+      - name: Upload Release Asset
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./structurizr-confluence-${{ github.event.release.tag_name }}-linux.tar.gz
+          asset_name: structurizr-confluence-${{ github.event.release.tag_name }}-linux.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Store native binary as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: structurizr-confluence-linux
+          path: target/*-runner
+          retention-days: 30
