@@ -1,0 +1,22 @@
+{
+  "views": [
+    {
+      "key": "itms_platform_moteur_context_view",
+      "title": "System context view - The ITMS platform and links with external systems.",
+      "type": "SystemContext",
+      "png": "itms_platform_moteur_context_view.png",
+      "pngKey": "itms_platform_moteur_context_view-key.png",
+      "svg": "itms_platform_moteur_context_view.svg",
+      "svgKey": "itms_platform_moteur_context_view-key.svg"
+    },
+    {
+      "key": "01_itms_platform_moteur_all_view",
+      "title": "All",
+      "type": "Container",
+      "png": "01_itms_platform_moteur_all_view.png",
+      "pngKey": "01_itms_platform_moteur_all_view-key.png",
+      "svg": "01_itms_platform_moteur_all_view.svg",
+      "svgKey": "01_itms_platform_moteur_all_view-key.svg"
+    }
+  ]
+}

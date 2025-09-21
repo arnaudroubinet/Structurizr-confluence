@@ -18,7 +18,7 @@ public class ImageUploadManager {
     private static final Logger logger = LoggerFactory.getLogger(ImageUploadManager.class);
     
     private final ConfluenceClient confluenceClient;
-    private final Map<String, String> uploadedImages = new HashMap<>(); // URL -> attachment filename
+    private final Map<String, MediaUploadResult> uploadedImages = new HashMap<>(); // key -> result
     
     public ImageUploadManager(ConfluenceClient confluenceClient) {
         this.confluenceClient = confluenceClient;
@@ -36,32 +36,49 @@ public class ImageUploadManager {
     public String downloadAndUploadImage(String imageUrl, String pageId) throws IOException {
         // Check if we've already uploaded this image
         if (uploadedImages.containsKey(imageUrl)) {
-            String filename = uploadedImages.get(imageUrl);
-            logger.debug("Image already uploaded: {} -> {}", imageUrl, filename);
-            return filename;
+            MediaUploadResult cached = uploadedImages.get(imageUrl);
+            logger.debug("Image already uploaded: {} -> {}", imageUrl, cached.filename());
+            return cached.filename();
         }
-        
+
         try {
             // Extract filename from URL
             String filename = extractFilenameFromUrl(imageUrl);
-            
+
             // Download the image
             byte[] imageContent = confluenceClient.downloadImage(imageUrl);
-            
+
             // Determine MIME type based on file extension
             String mimeType = getMimeTypeFromFilename(filename);
-            
-            // Upload as attachment
-            String attachmentId = confluenceClient.uploadAttachment(pageId, filename, imageContent, mimeType);
-            
+
+            // Try detailed upload first to get media identifiers; fallback to legacy upload if unavailable
+            MediaUploadResult result;
+            try {
+                ConfluenceClient.AttachmentDetails details = confluenceClient.uploadAttachmentDetailed(pageId, filename, imageContent, mimeType);
+                if (details != null) {
+                    result = new MediaUploadResult(details.filename(), details.fileId(), details.collectionName());
+                    logger.info("Successfully downloaded and uploaded image (detailed): {} -> {} (attachment ID: {}, fileId: {}, collection: {})",
+                        imageUrl, details.filename(), details.attachmentId(), details.fileId(), details.collectionName());
+                } else {
+                    // Null details from mock/unavailable method -> fallback
+                    String attachmentId = confluenceClient.uploadAttachment(pageId, filename, imageContent, mimeType);
+                    result = new MediaUploadResult(filename, null, null);
+                    logger.info("Successfully downloaded and uploaded image (fallback): {} -> {} (attachment ID: {} - no media IDs)",
+                        imageUrl, filename, attachmentId);
+                }
+            } catch (Exception detailedEx) {
+                logger.debug("uploadAttachmentDetailed failed, falling back to uploadAttachment: {}", detailedEx.toString());
+                String attachmentId = confluenceClient.uploadAttachment(pageId, filename, imageContent, mimeType);
+                result = new MediaUploadResult(filename, null, null);
+                logger.info("Successfully downloaded and uploaded image (fallback): {} -> {} (attachment ID: {} - no media IDs)",
+                    imageUrl, filename, attachmentId);
+            }
+
             // Store mapping for future reference
-            uploadedImages.put(imageUrl, filename);
-            
-            logger.info("Successfully downloaded and uploaded image: {} -> {} (attachment ID: {})", 
-                imageUrl, filename, attachmentId);
-            
-            return filename;
-            
+            uploadedImages.put(imageUrl, result);
+
+            return result.filename();
+
         } catch (Exception e) {
             logger.error("Failed to download and upload image: {}", imageUrl, e);
             throw new IOException("Failed to process image: " + imageUrl, e);
@@ -73,8 +90,8 @@ public class ImageUploadManager {
      */
     String extractFilenameFromUrl(String imageUrl) {
         try {
-            URL url = new URL(imageUrl);
-            String path = url.getPath();
+            java.net.URI uri = java.net.URI.create(imageUrl);
+            String path = uri.getPath();
             
             // Get the last part of the path
             String filename = path.substring(path.lastIndexOf('/') + 1);
@@ -132,31 +149,48 @@ public class ImageUploadManager {
      */
     public String uploadLocalFile(File localFile, String pageId) throws IOException {
         String filename = localFile.getName();
-        
+
         // Check if we've already uploaded this file
         String cacheKey = "local:" + localFile.getAbsolutePath();
         if (uploadedImages.containsKey(cacheKey)) {
-            String cachedFilename = uploadedImages.get(cacheKey);
-            logger.debug("Local file already uploaded: {} -> {}", filename, cachedFilename);
-            return cachedFilename;
+            MediaUploadResult cached = uploadedImages.get(cacheKey);
+            logger.debug("Local file already uploaded: {} -> {}", filename, cached.filename());
+            return cached.filename();
         }
-        
+
         try {
             // Read the file content
             byte[] fileContent = Files.readAllBytes(localFile.toPath());
-            
+
             // Determine MIME type based on file extension
             String mimeType = getMimeTypeFromFilename(filename);
-            
-            // Upload to Confluence
-            confluenceClient.uploadAttachment(pageId, filename, fileContent, mimeType);
-            
+
+            // Try detailed upload for media identifiers first; fallback to legacy upload
+            MediaUploadResult result;
+            try {
+                ConfluenceClient.AttachmentDetails details = confluenceClient.uploadAttachmentDetailed(pageId, filename, fileContent, mimeType);
+                if (details != null) {
+                    result = new MediaUploadResult(details.filename(), details.fileId(), details.collectionName());
+                    logger.info("Successfully uploaded local file (detailed): {} to page {} (fileId: {}, collection: {})",
+                        filename, pageId, details.fileId(), details.collectionName());
+                } else {
+                    String attachmentId = confluenceClient.uploadAttachment(pageId, filename, fileContent, mimeType);
+                    result = new MediaUploadResult(filename, null, null);
+                    logger.info("Successfully uploaded local file (fallback): {} to page {} (attachment ID: {} - no media IDs)",
+                        filename, pageId, attachmentId);
+                }
+            } catch (Exception detailedEx) {
+                logger.debug("uploadAttachmentDetailed failed for local file, falling back: {}", detailedEx.toString());
+                String attachmentId = confluenceClient.uploadAttachment(pageId, filename, fileContent, mimeType);
+                result = new MediaUploadResult(filename, null, null);
+                logger.info("Successfully uploaded local file (fallback): {} to page {} (attachment ID: {} - no media IDs)",
+                    filename, pageId, attachmentId);
+            }
+
             // Cache the result
-            uploadedImages.put(cacheKey, filename);
-            
-            logger.info("Successfully uploaded local file: {} to page {}", filename, pageId);
-            return filename;
-            
+            uploadedImages.put(cacheKey, result);
+            return result.filename();
+
         } catch (IOException e) {
             logger.error("Failed to upload local file: {} to page {}", filename, pageId, e);
             throw e;
@@ -170,4 +204,17 @@ public class ImageUploadManager {
         uploadedImages.clear();
         logger.debug("Cleared image upload cache");
     }
+
+    /**
+     * Returns uploaded media info for a previously uploaded key (URL or local:file path).
+     */
+    public MediaUploadResult getMediaInfo(String key) {
+        return uploadedImages.get(key);
+    }
+
+    /**
+     * Simple carrier for media identifiers required by ADF media nodes.
+     * filename is still provided for fallback when media ids are missing.
+     */
+    public static record MediaUploadResult(String filename, String fileId, String collectionName) {}
 }

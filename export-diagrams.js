@@ -14,7 +14,7 @@ if (process.argv.length < 4) {
   process.exit(1);
 }
 
-const url = process.argv[2];
+let url = process.argv[2];
 const format = process.argv[3];
 
 if (format !== PNG_FORMAT && format !== SVG_FORMAT) {
@@ -32,6 +32,7 @@ if (process.argv.length > 3) {
 
 var expectedNumberOfExports = 0;
 var actualNumberOfExports = 0;
+var manifest = { views: [] };
 
 (async () => {
   const browser = await puppeteer.launch({
@@ -48,20 +49,63 @@ var actualNumberOfExports = 0;
   if (username !== undefined && password !== undefined) {
     // sign in
     const parts = url.split('://');
-    const signinUrl = parts[0] + '://' + parts[1].substring(0, parts[1].indexOf('/')) + '/dashboard'; 
+    const host = parts[0] + '://' + parts[1].substring(0, parts[1].indexOf('/'));
+    const signinUrl = host + '/signin';
     console.log(' - Signing in via ' + signinUrl);
 
     await page.goto(signinUrl, { waitUntil: 'networkidle2' });
-    await page.type('#username', username);
-    await page.type('#password', password);
-    await page.keyboard.press('Enter');
-    await page.waitForSelector('div#dashboard');
+
+    // Try multiple selectors for username/email and password
+    const userSelectors = ['#username', 'input[name="username"]', '#email', '#emailAddress', 'input[type="email"]', 'input[name="email"]'];
+    const passSelectors = ['#password', 'input[name="password"]', 'input[type="password"]'];
+
+    let userField = null;
+    for (const sel of userSelectors) {
+      const el = await page.$(sel);
+      if (el) { userField = sel; break; }
+    }
+    let passField = null;
+    for (const sel of passSelectors) {
+      const el = await page.$(sel);
+      if (el) { passField = sel; break; }
+    }
+
+    if (!userField || !passField) {
+      console.log(' - Could not find login fields, current URL:', page.url());
+    } else {
+      await page.focus(userField);
+      await page.keyboard.type(username);
+      await page.focus(passField);
+      await page.keyboard.type(password);
+
+      // Try submit
+      const submitSelectors = ['button[type="submit"]', 'button:has-text("Sign in")', 'input[type="submit"]', 'button:has-text("Se connecter")'];
+      let clicked = false;
+      for (const sel of submitSelectors) {
+        const btn = await page.$(sel);
+        if (btn) { await btn.click(); clicked = true; break; }
+      }
+      if (!clicked) {
+        await page.keyboard.press('Enter');
+      }
+
+      // Wait for redirect away from /signin or dashboard present
+      try {
+        await page.waitForFunction(() => !location.pathname.includes('/signin'), { timeout: 20000 });
+      } catch (_) {}
+      try {
+        await page.waitForSelector('div#dashboard', { timeout: 10000 });
+      } catch (_) {}
+    }
   }
 
+  // ensure viewer URL (append /diagrams if not present)
+  const viewerUrl = url.match(/\/workspace\/(\d+)(\/?$)/) ? (url.replace(/\/?$/, '') + '/diagrams') : url;
   // visit the diagrams page
-  console.log(" - Opening " + url);
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction('structurizr.scripting && structurizr.scripting.isDiagramRendered() === true');
+  console.log(" - Opening " + viewerUrl);
+  await page.goto(viewerUrl, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction('structurizr && structurizr.scripting', { timeout: 60000 });
+  await page.waitForFunction('structurizr.scripting.isDiagramRendered() === true', { timeout: 60000 });
 
   if (format === PNG_FORMAT) {
     // add a function to the page to save the generated PNG images
@@ -93,6 +137,16 @@ var actualNumberOfExports = 0;
       expectedNumberOfExports++; // diagram
       expectedNumberOfExports++; // key
     }
+    // Prepare manifest entry
+    manifest.views.push({
+      key: view.key,
+      title: view.title || view.name || view.key,
+      type: view.type,
+      png: view.key + '.png',
+      pngKey: view.key + '-key.png',
+      svg: view.key + '.svg',
+      svgKey: view.key + '-key.svg'
+    });
   });
 
   console.log(" - Starting export");
@@ -132,6 +186,8 @@ var actualNumberOfExports = 0;
       }
 
       if (actualNumberOfExports === expectedNumberOfExports) {
+        // Write manifest
+        try { fs.writeFileSync('diagram-manifest.json', JSON.stringify(manifest, null, 2)); } catch(e) { console.warn('Failed to write manifest', e); }
         console.log(" - Finished");
         browser.close();
       }    
@@ -154,5 +210,13 @@ var actualNumberOfExports = 0;
       }
     }
   }
+
+  // Write manifest at end in case of PNG path termination as well
+  const interval = setInterval(() => {
+    if (actualNumberOfExports === expectedNumberOfExports) {
+      try { fs.writeFileSync('diagram-manifest.json', JSON.stringify(manifest, null, 2)); } catch(e) { console.warn('Failed to write manifest', e); }
+      clearInterval(interval);
+    }
+  }, 500);
 
 })();

@@ -277,7 +277,7 @@ public class ConfluenceClient {
             String spaceId = getSpaceId();
             
             // Utiliser l'endpoint API v2 avec l'ID de l'espace
-            HttpGet httpGet = new HttpGet(config.getBaseUrl() + "/wiki/api/v2/spaces/" + spaceId + "/pages");
+            HttpGet httpGet = new HttpGet(config.getBaseUrl() + "/wiki/api/v2/spaces/" + spaceId + "/pages?limit=250");
             httpGet.setHeader("Authorization", authHeader);
             httpGet.setHeader("Accept", "application/json");
             
@@ -383,7 +383,9 @@ public class ConfluenceClient {
      */
     public List<String> getSpacePageIds(String spaceKey) throws IOException {
         try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
-            URIBuilder uriBuilder = new URIBuilder(config.getBaseUrl() + "/wiki/api/v2/spaces/" + spaceKey + "/pages");
+            // Utiliser l'ID d'espace avec l'API v2 (la route avec la clé retourne 400)
+            String spaceId = getSpaceId();
+            URIBuilder uriBuilder = new URIBuilder(config.getBaseUrl() + "/wiki/api/v2/spaces/" + spaceId + "/pages");
             uriBuilder.addParameter("limit", "250");
             
             HttpGet httpGet = new HttpGet(uriBuilder.build());
@@ -441,7 +443,9 @@ public class ConfluenceClient {
                 JsonNode jsonResponse = objectMapper.readTree(responseBody);
                 JsonNode body = jsonResponse.get("body");
                 if (body != null && body.get("atlas_doc_format") != null) {
-                    return body.get("atlas_doc_format").get("value").toString();
+                    // Return the raw ADF JSON string. Using toString() here would include extra quotes/escapes
+                    // (e.g., "{\"type\":\"doc\"...}") which breaks string contains checks in tests.
+                    return body.get("atlas_doc_format").get("value").asText();
                 }
                 
                 logger.warn("No ADF content found for page {}", pageId);
@@ -529,6 +533,54 @@ public class ConfluenceClient {
             }
         }
     }
+
+    /**
+     * Detailed upload returning Confluence Media identifiers needed by ADF media nodes.
+     * After uploading the attachment, fetches the media fileId and collectionName via expand=extensions.
+     */
+    public AttachmentDetails uploadAttachmentDetailed(String pageId, String fileName, byte[] fileContent, String mimeType) throws IOException {
+        String attachmentId = uploadAttachment(pageId, fileName, fileContent, mimeType);
+
+        // Fetch attachment details with extensions to get media identifiers
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            String getUrl = config.getBaseUrl() + "/wiki/rest/api/content/" + attachmentId + "?expand=extensions";
+            HttpGet httpGet = new HttpGet(getUrl);
+            httpGet.setHeader("Authorization", authHeader);
+            httpGet.setHeader("Accept", "application/json");
+
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    throw new IOException("Failed to fetch attachment extensions: " + response.getStatusLine().getStatusCode() + " - " + responseBody);
+                }
+
+                JsonNode json = objectMapper.readTree(responseBody);
+                String title = json.has("title") ? json.get("title").asText() : fileName;
+                String fileId = null;
+                String collectionName = null;
+                JsonNode extensions = json.get("extensions");
+                if (extensions != null) {
+                    if (extensions.has("fileId")) {
+                        fileId = extensions.get("fileId").asText();
+                    }
+                    if (extensions.has("collectionName")) {
+                        collectionName = extensions.get("collectionName").asText();
+                    }
+                }
+
+                if (fileId == null || collectionName == null) {
+                    logger.warn("Attachment extensions missing media identifiers (fileId or collectionName). Rendering may fail. attachmentId={} response={}", attachmentId, responseBody);
+                } else {
+                    logger.info("Fetched media identifiers for attachment {} -> fileId={}, collectionName={}", attachmentId, fileId, collectionName);
+                }
+
+                return new AttachmentDetails(attachmentId, title, fileId, collectionName);
+            }
+        }
+    }
+
+    /** Record containing attachment details and media identifiers. */
+    public static record AttachmentDetails(String attachmentId, String filename, String fileId, String collectionName) {}
     
     /**
      * Downloads content from a URL and returns the byte array.

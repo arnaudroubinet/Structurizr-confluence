@@ -4,9 +4,11 @@
   "description": "Node.js dependencies for diagram export",
   "main": "export-diagrams.js",
   "scripts": {
-    "export-diagrams": "node export-diagrams.js"
+    "export-diagrams": "node export-diagrams.js",
+    "export-diagrams:playwright": "node export-diagrams.playwright.js"
   },
   "dependencies": {
-    "puppeteer": "^21.0.0"
+    "puppeteer": "^21.0.0",
+    "playwright": "^1.55.0"
   }
 }

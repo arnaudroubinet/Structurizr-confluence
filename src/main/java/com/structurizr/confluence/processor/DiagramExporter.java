@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -204,8 +205,8 @@ public class DiagramExporter {
                 Path sourcePath = file.toPath();
                 Path targetPath = outputDirectory.resolve(file.getName());
                 
-                // Move file to target directory
-                Files.move(sourcePath, targetPath);
+                // Move file to target directory (overwrite if exists to support re-runs)
+                Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
                 diagramFiles.add(targetPath.toFile());
                 
                 logger.debug("Moved diagram file: {} -> {}", sourcePath, targetPath);

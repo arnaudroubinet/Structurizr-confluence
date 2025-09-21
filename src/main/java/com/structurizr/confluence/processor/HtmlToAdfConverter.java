@@ -853,6 +853,44 @@ public class HtmlToAdfConverter {
             throw new RuntimeException("Failed to inject native ADF table", e);
         }
     }
+
+    /**
+     * Injects a native ADF node (generic) into the document using a generic marker.
+     * Used for structures not supported by the ADF Builder (e.g., mediaSingle sizing control).
+     */
+    private Document injectGenericAdfNode(Document doc, ObjectNode adfNode) {
+        try {
+            String adfJson = objectMapper.writeValueAsString(adfNode);
+            logger.debug("Generated native ADF node: {}", adfJson);
+            return doc.paragraph("<!-- ADF_NODE_START -->" + adfJson + "<!-- ADF_NODE_END -->");
+        } catch (Exception e) {
+            logger.warn("Failed to inject generic native ADF node", e);
+            throw new RuntimeException("Failed to inject native ADF node", e);
+        }
+    }
+
+    /**
+     * Builds and injects a mediaSingle node referencing an Atlassian Media file by id/collection
+     * without width/height so Confluence uses the image's original size.
+     */
+    private Document injectMediaSingleNode(Document doc, String fileId, String collection) {
+        ObjectNode mediaSingle = objectMapper.createObjectNode();
+        mediaSingle.put("type", "mediaSingle");
+
+        ArrayNode content = objectMapper.createArrayNode();
+        ObjectNode media = objectMapper.createObjectNode();
+        media.put("type", "media");
+        ObjectNode attrs = objectMapper.createObjectNode();
+        attrs.put("type", "file");
+        attrs.put("id", fileId);
+        attrs.put("collection", collection);
+        media.set("attrs", attrs);
+        content.add(media);
+        mediaSingle.set("content", content);
+
+        // Do NOT set width/height to preserve original size
+        return injectGenericAdfNode(doc, mediaSingle);
+    }
     
     /**
      * Fallback method that creates a more structured table representation
@@ -1095,8 +1133,17 @@ public class HtmlToAdfConverter {
                 // External image - download and upload as attachment
                 try {
                     String attachmentFilename = imageUploadManager.downloadAndUploadImage(src, currentPageId);
-                    
-                    // Use file type with uploaded attachment
+
+                    // Try to use Atlassian Media identifiers if available
+                    ImageUploadManager.MediaUploadResult info = imageUploadManager.getMediaInfo(src);
+                    if (info != null && info.fileId() != null && info.collectionName() != null) {
+                        String fileId = info.fileId();
+                        String collection = info.collectionName();
+                        // Use mediaSingle without explicit sizing to keep original image size
+                        return injectMediaSingleNode(doc, fileId, collection);
+                    }
+
+                    // Fallback to previous filename-based behavior
                     return doc.mediaGroup(mediaGroup -> {
                         if (!caption.isEmpty()) {
                             mediaGroup.file(imageId, attachmentFilename, caption);
@@ -1172,16 +1219,25 @@ public class HtmlToAdfConverter {
                 logger.warn("No image upload manager or page ID configured for diagram: {}", viewKey);
                 return doc.paragraph("Diagram available but cannot upload: " + viewKey);
             }
-            
-            // Upload the local diagram file
             String attachmentFilename = imageUploadManager.uploadLocalFile(diagramFile, currentPageId);
-            
+
+            // Prefer Atlassian Media identifiers when available
+            ImageUploadManager.MediaUploadResult info = imageUploadManager.getMediaInfo("local:" + diagramFile.getAbsolutePath());
+
             // Create media group with the uploaded diagram
             String imageId = generateImageId(diagramFile.getName());
             String caption = title.isEmpty() ? alt : title;
             
             logger.info("Successfully uploaded local diagram: {} -> {}", diagramFile.getName(), attachmentFilename);
-            
+
+            if (info != null && info.fileId() != null && info.collectionName() != null) {
+                String fileId = info.fileId();
+                String collection = info.collectionName();
+                // Inject mediaSingle without explicit size to preserve original size
+                return injectMediaSingleNode(doc, fileId, collection);
+            }
+
+            // Fallback to filename-based behavior
             return doc.mediaGroup(mediaGroup -> {
                 if (!caption.isEmpty()) {
                     mediaGroup.file(imageId, attachmentFilename, caption);
