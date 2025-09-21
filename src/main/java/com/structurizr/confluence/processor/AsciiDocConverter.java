@@ -84,11 +84,7 @@ public class AsciiDocConverter {
             
         } catch (Exception e) {
             logger.error("Error converting AsciiDoc to HTML for document: {}", title, e);
-            // Fallback: return original content wrapped in HTML
-            return "<div class=\"asciidoc-error\">" +
-                   "<p><strong>AsciiDoc conversion failed:</strong></p>" +
-                   "<pre>" + asciiDocContent + "</pre>" +
-                   "</div>";
+            throw new IllegalStateException("Conversion AsciiDoc -> HTML échouée: " + (title != null ? title : "(sans titre)"), e);
         }
     }
     
@@ -130,11 +126,7 @@ public class AsciiDocConverter {
             
         } catch (Exception e) {
             logger.error("Error converting AsciiDoc to HTML with attributes for document: {}", title, e);
-            // Fallback: return original content wrapped in HTML
-            return "<div class=\"asciidoc-error\">" +
-                   "<p><strong>AsciiDoc conversion failed:</strong></p>" +
-                   "<pre>" + asciiDocContent + "</pre>" +
-                   "</div>";
+            throw new IllegalStateException("Conversion AsciiDoc -> HTML (avec attributs) échouée: " + (title != null ? title : "(sans titre)"), e);
         }
     }
     

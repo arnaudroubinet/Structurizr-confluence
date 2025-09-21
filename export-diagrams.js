@@ -5,7 +5,7 @@ const PNG_FORMAT = 'png';
 const SVG_FORMAT = 'svg';
 
 const IGNORE_HTTPS_ERRORS = true;
-const HEADLESS = true;
+const HEADLESS = "new";
 
 const IMAGE_VIEW_TYPE = 'Image';
 
@@ -34,7 +34,15 @@ var expectedNumberOfExports = 0;
 var actualNumberOfExports = 0;
 
 (async () => {
-  const browser = await puppeteer.launch({ignoreHTTPSErrors: IGNORE_HTTPS_ERRORS, headless: HEADLESS});
+  const browser = await puppeteer.launch({
+    ignoreHTTPSErrors: IGNORE_HTTPS_ERRORS,
+    headless: HEADLESS,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage'
+    ]
+  });
   const page = await browser.newPage();
 
   if (username !== undefined && password !== undefined) {

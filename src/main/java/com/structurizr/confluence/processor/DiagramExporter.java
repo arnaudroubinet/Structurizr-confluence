@@ -27,6 +27,7 @@ public class DiagramExporter {
     private final String password;
     private final String workspaceId;
     private final Path outputDirectory;
+    private final int maxDurationSeconds;
     
     public DiagramExporter(String structurizrUrl, String username, String password, String workspaceId) {
         this.structurizrUrl = structurizrUrl;
@@ -34,6 +35,10 @@ public class DiagramExporter {
         this.password = password;
         this.workspaceId = workspaceId;
         this.outputDirectory = Paths.get("target", "diagrams");
+        // Overall timeout for the Puppeteer export process. Defaults to 300 seconds.
+        // Can be overridden with env var PUPPETEER_MAX_DURATION_SECS to accommodate slower environments
+        // or additional fallback attempts in the export script.
+        this.maxDurationSeconds = parseIntEnv("PUPPETEER_MAX_DURATION_SECS", 300);
     }
     
     /**
@@ -44,14 +49,14 @@ public class DiagramExporter {
      */
     public static DiagramExporter fromEnvironment(String workspaceId) {
         String url = System.getenv("STRUCTURIZR_URL");
-        String user = System.getenv("STRUCTURIZR_USER");
+        String user = System.getenv("STRUCTURIZR_USERNAME");
         String password = System.getenv("STRUCTURIZR_PASSWORD");
-        
+
         if (url == null || user == null || password == null) {
-            logger.warn("STRUCTURIZR_URL, STRUCTURIZR_USER, or STRUCTURIZR_PASSWORD environment variables not set. Diagram export will be skipped.");
+            logger.warn("STRUCTURIZR_URL, STRUCTURIZR_USERNAME ou STRUCTURIZR_PASSWORD non définies. Export des diagrammes indisponible.");
             return null;
         }
-        
+
         return new DiagramExporter(url, user, password, workspaceId);
     }
     
@@ -94,18 +99,28 @@ public class DiagramExporter {
             processBuilder.redirectErrorStream(true);
             
             Process process = processBuilder.start();
-            
-            // Wait for completion with timeout
-            boolean finished = process.waitFor(120, TimeUnit.SECONDS);
+
+            // Stream logs from the Node process for better diagnostics
+            new Thread(() -> {
+                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        logger.info("[puppeteer] {}", line);
+                    }
+                } catch (IOException ignored) { }
+            }).start();
+
+            // Wait for completion with timeout (configurable via PUPPETEER_MAX_DURATION_SECS)
+            boolean finished = process.waitFor(maxDurationSeconds, TimeUnit.SECONDS);
             
             if (!finished) {
                 process.destroyForcibly();
-                throw new IOException("Diagram export timed out after 120 seconds");
+                throw new IOException("Diagram export timed out after " + maxDurationSeconds + " seconds");
             }
             
             int exitCode = process.exitValue();
             if (exitCode != 0) {
-                throw new IOException("Diagram export failed with exit code: " + exitCode);
+                throw new IOException("Diagram export failed with exit code: " + exitCode + ". See [puppeteer] logs above for details.");
             }
             
             logger.info("Diagram export completed successfully");
@@ -116,6 +131,23 @@ public class DiagramExporter {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Diagram export was interrupted", e);
+        }
+    }
+
+    /**
+     * Parses an integer environment variable with a default value.
+     */
+    private static int parseIntEnv(String name, int defaultValue) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            LoggerFactory.getLogger(DiagramExporter.class)
+                .warn("Invalid integer for env {}: '{}'. Using default {}.", name, value, defaultValue);
+            return defaultValue;
         }
     }
     
@@ -134,10 +166,10 @@ public class DiagramExporter {
                 npm.directory(new File("."));
                 Process process = npm.start();
                 
-                boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+                boolean finished = process.waitFor(180, TimeUnit.SECONDS);
                 if (!finished) {
                     process.destroyForcibly();
-                    throw new IOException("npm install timed out");
+                    throw new IOException("npm install timed out after 180 seconds");
                 }
                 
                 if (process.exitValue() != 0) {

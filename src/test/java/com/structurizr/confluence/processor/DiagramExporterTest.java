@@ -16,6 +16,14 @@ class DiagramExporterTest {
     void testFromEnvironmentWithoutVariables() {
         logger.info("=== TEST DIAGRAM EXPORTER WITHOUT ENVIRONMENT VARIABLES ===");
         
+        // Si l'environnement de CI définit déjà les variables, ignorer ce test
+        if (System.getenv("STRUCTURIZR_URL") != null ||
+            System.getenv("STRUCTURIZR_USERNAME") != null ||
+            System.getenv("STRUCTURIZR_PASSWORD") != null) {
+            logger.info("STRUCTURIZR_* variables present in environment; skipping null expectation test");
+            return;
+        }
+
         // Test when environment variables are not set
         DiagramExporter exporter = DiagramExporter.fromEnvironment("123");
         

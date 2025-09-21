@@ -134,9 +134,8 @@ public class HtmlToAdfConverter {
             return doc;
             
         } catch (Exception e) {
-            logger.error("Error converting HTML to ADF, falling back to basic conversion", e);
-            // Fallback: create document without post-processing
-            return convertToAdfWithoutPostProcessing(htmlContent, title);
+            logger.error("Error converting HTML to ADF", e);
+            throw new IllegalStateException("Conversion HTML vers ADF échouée: " + (title != null ? title : "(sans titre)"), e);
         }
     }
 
@@ -180,14 +179,7 @@ public class HtmlToAdfConverter {
             
         } catch (Exception e) {
             logger.error("Error converting HTML to ADF JSON", e);
-            // Fallback: create simple text document
-            Document fallback = createFallbackDocument(title, htmlContent);
-            try {
-                return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(fallback);
-            } catch (Exception e2) {
-                logger.error("Error creating fallback JSON", e2);
-                return "{\"version\":1,\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Error converting content\"}]}]}";
-            }
+            throw new IllegalStateException("Conversion HTML vers ADF JSON échouée: " + (title != null ? title : "(sans titre)"), e);
         }
     }
 
@@ -213,8 +205,7 @@ public class HtmlToAdfConverter {
             
         } catch (Exception e) {
             logger.error("Error converting HTML to ADF", e);
-            // Fallback: create simple text document
-            return createFallbackDocument(title, htmlContent);
+            throw new IllegalStateException("Conversion HTML vers ADF échouée (sans post-traitement)", e);
         }
     }
     
@@ -247,8 +238,8 @@ public class HtmlToAdfConverter {
             return doc;
             
         } catch (Exception e) {
-            logger.warn("Error during table post-processing, returning original document", e);
-            return doc;
+            logger.warn("Error during table post-processing", e);
+            throw new IllegalStateException("Post-traitement des tableaux ADF échoué", e);
         }
     }
     
@@ -285,8 +276,7 @@ public class HtmlToAdfConverter {
             
         } catch (Exception e) {
             logger.error("Error converting sections to ADF", e);
-            // Fallback: create simple text document
-            return createFallbackDocument(mainTitle, sections.toString());
+            throw new IllegalStateException("Conversion de sections HTML vers ADF échouée", e);
         }
     }
     
@@ -312,9 +302,8 @@ public class HtmlToAdfConverter {
             }
             
         } catch (Exception e) {
-            logger.warn("Error parsing HTML with JSoup, falling back to simple processing", e);
-            // Fallback to simple text processing
-            doc = doc.paragraph(cleanText(htmlContent));
+            logger.warn("Error parsing HTML with JSoup", e);
+            throw new IllegalStateException("Parsing HTML échoué", e);
         }
         
         return doc;
@@ -837,9 +826,8 @@ public class HtmlToAdfConverter {
             return injectNativeAdfNode(result, tableNode);
             
         } catch (Exception e) {
-            logger.warn("Error processing table as native ADF, falling back to structured format", e);
-            // Fallback to the improved pipe-separated format
-            return processTableFallback(doc, table);
+            logger.warn("Error processing table as native ADF", e);
+            throw new IllegalStateException("Traitement de tableau ADF natif échoué", e);
         }
     }
     
@@ -932,9 +920,8 @@ public class HtmlToAdfConverter {
             
             return doc;
         } catch (Exception e) {
-            logger.warn("Error processing table fallback, using simple text representation", e);
-            // Ultimate fallback to simple text representation
-            return doc.paragraph("Table content: " + getElementText(table));
+            logger.warn("Error processing table fallback", e);
+            throw new IllegalStateException("Traitement de tableau de secours échoué", e);
         }
     }
 

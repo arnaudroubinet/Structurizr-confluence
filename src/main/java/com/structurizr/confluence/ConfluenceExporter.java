@@ -88,24 +88,25 @@ public class ConfluenceExporter {
         String workspaceId = getWorkspaceId(workspace);
         DiagramExporter diagramExporter = DiagramExporter.fromEnvironment(workspaceId);
         List<File> exportedDiagrams = null;
-        
-        if (diagramExporter != null) {
-            try {
-                logger.info("Exporting diagrams using Puppeteer script...");
-                exportedDiagrams = diagramExporter.exportDiagrams(workspace);
-                logger.info("Successfully exported {} diagrams", exportedDiagrams.size());
-            } catch (Exception e) {
-                logger.warn("Failed to export diagrams using Puppeteer, will continue without diagrams", e);
-            }
-        } else {
-            logger.info("Diagram export skipped - STRUCTURIZR_* environment variables not configured");
+
+        // Export des diagrammes: OBLIGATOIRE
+        if (diagramExporter == null) {
+            throw new IllegalStateException("L'export des diagrammes via Puppeteer est obligatoire mais les variables d'environnement ne sont pas configurées. Veuillez définir STRUCTURIZR_URL, STRUCTURIZR_USERNAME et STRUCTURIZR_PASSWORD.");
+        }
+
+        try {
+            logger.info("Exporting diagrams using Puppeteer script...");
+            exportedDiagrams = diagramExporter.exportDiagrams(workspace);
+            logger.info("Successfully exported {} diagrams", exportedDiagrams.size());
+        } catch (Exception e) {
+            throw new IllegalStateException("Echec de l'export des diagrammes via Puppeteer. Arrêt du processus.", e);
         }
 
         // Store exported diagrams for use by converters
         this.exportedDiagrams = exportedDiagrams;
         
         // Configure converters to use local diagrams if available
-        if (exportedDiagrams != null && !exportedDiagrams.isEmpty()) {
+        if (exportedDiagrams != null) {
             Function<String, File> diagramResolver = this::getDiagramFile;
             asciiDocConverter.setDiagramResolver(diagramResolver);
             htmlToAdfConverter.setDiagramResolver(diagramResolver);
@@ -583,7 +584,7 @@ public class ConfluenceExporter {
             .h1("Schémas");
             
         if (isFromStructurizr) {
-            String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
+            String structurizrServerUrl = System.getenv("STRUCTURIZR_URL");
             if (structurizrServerUrl == null) structurizrServerUrl = "https://structurizr.roubinet.fr";
             diagramsDoc.paragraph("Cette page regroupe tous les schémas PNG du workspace Structurizr (serveur: " + structurizrServerUrl + ", workspace: " + workspaceId + ").");
         } else {
@@ -612,7 +613,7 @@ public class ConfluenceExporter {
                     
                     if (isFromStructurizr) {
                         // Try to link to actual diagram images for Structurizr workspaces
-                        String structurizrServerUrl = System.getenv("STRUCTURIZR_SERVER_URL");
+                        String structurizrServerUrl = System.getenv("STRUCTURIZR_URL");
                         if (structurizrServerUrl == null) structurizrServerUrl = "https://structurizr.roubinet.fr";
                         String pngUrl = structurizrServerUrl + "/workspace/" + workspaceId + "/diagrams/" + diagramKey + ".png";
                         
