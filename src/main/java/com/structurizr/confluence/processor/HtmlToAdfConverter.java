@@ -1168,8 +1168,9 @@ public class HtmlToAdfConverter {
      * @return updated ADF document
      */
     private Document processLocalDiagram(Document doc, String viewKey, String alt, String title) {
-        if (diagramResolver == null || imageUploadManager == null || currentPageId == null) {
-            // No diagram resolver or upload manager - fallback to text
+        if (diagramResolver == null) {
+            // No diagram resolver - fallback to text
+            logger.debug("No diagram resolver configured for view key: {}", viewKey);
             return doc.paragraph("Diagram: " + viewKey + (alt.isEmpty() ? "" : " (" + alt + ")"));
         }
         
@@ -1180,12 +1181,19 @@ public class HtmlToAdfConverter {
                 return doc.paragraph("Diagram not found: " + viewKey);
             }
             
+            if (imageUploadManager == null || currentPageId == null) {
+                logger.warn("No image upload manager or page ID configured for diagram: {}", viewKey);
+                return doc.paragraph("Diagram available but cannot upload: " + viewKey);
+            }
+            
             // Upload the local diagram file
             String attachmentFilename = imageUploadManager.uploadLocalFile(diagramFile, currentPageId);
             
             // Create media group with the uploaded diagram
             String imageId = generateImageId(diagramFile.getName());
             String caption = title.isEmpty() ? alt : title;
+            
+            logger.info("Successfully uploaded local diagram: {} -> {}", diagramFile.getName(), attachmentFilename);
             
             return doc.mediaGroup(mediaGroup -> {
                 if (!caption.isEmpty()) {
@@ -1197,7 +1205,7 @@ public class HtmlToAdfConverter {
             
         } catch (Exception e) {
             logger.error("Failed to process local diagram for view key: {}", viewKey, e);
-            return doc.paragraph("Error loading diagram: " + viewKey);
+            return doc.paragraph("Error loading diagram: " + viewKey + " - " + e.getMessage());
         }
     }
     

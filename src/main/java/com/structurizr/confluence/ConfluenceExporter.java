@@ -656,17 +656,36 @@ public class ConfluenceExporter {
      */
     public File getDiagramFile(String viewKey) {
         if (exportedDiagrams == null) {
+            logger.debug("No exported diagrams available for view key: {}", viewKey);
             return null;
         }
         
+        logger.debug("Looking for diagram file for view key: {} among {} exported files", viewKey, exportedDiagrams.size());
+        
         for (File diagramFile : exportedDiagrams) {
             String filename = diagramFile.getName();
-            // Remove extension to get the view key
-            String fileViewKey = filename.substring(0, filename.lastIndexOf('.'));
-            if (fileViewKey.equals(viewKey)) {
+            logger.debug("Checking diagram file: {}", filename);
+            
+            // Handle different filename patterns that might be used
+            String fileViewKey = filename;
+            if (filename.contains(".")) {
+                // Remove extension to get the view key
+                fileViewKey = filename.substring(0, filename.lastIndexOf('.'));
+            }
+            
+            // Check for exact match or partial match
+            if (fileViewKey.equals(viewKey) || 
+                fileViewKey.toLowerCase().contains(viewKey.toLowerCase()) ||
+                viewKey.toLowerCase().contains(fileViewKey.toLowerCase())) {
+                logger.info("Found matching diagram file: {} for view key: {}", filename, viewKey);
                 return diagramFile;
             }
         }
+        
+        logger.warn("No diagram file found for view key: {}", viewKey);
+        logger.debug("Available diagram files: {}", exportedDiagrams.stream()
+            .map(File::getName)
+            .toArray());
         
         return null;
     }

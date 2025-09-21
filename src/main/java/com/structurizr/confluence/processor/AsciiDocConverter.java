@@ -176,12 +176,13 @@ public class AsciiDocConverter {
             );
             logger.debug("Replaced diagram embeds with external URLs for workspace {} and branch {}", workspaceId, branchName);
         } else {
-            // Fallback to placeholder text when no context is available
+            // Use local diagram placeholders even without explicit diagram resolver
+            // This allows the HtmlToAdfConverter to attempt to find and use local diagrams
             processed = processed.replaceAll(
                 "image::embed:([a-zA-Z0-9_-]+)\\[\\]",
-                "[DIAGRAM: $1]"
+                "image::local:diagram:$1[]"
             );
-            logger.debug("Used fallback placeholders for diagram embeds (no workspace context)");
+            logger.debug("Used local diagram placeholders as fallback (no workspace context available)");
         }
         
         // Handle include directives that might reference external files
