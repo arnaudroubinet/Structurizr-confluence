@@ -3,15 +3,6 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "settings": {
-    "java.configuration.runtimes": [
-      {
-        "name": "JavaSE-21",
-        "path": "/usr/lib/jvm/java-21-openjdk-amd64",
-        "default": true
-      }
-    ]
-  },
   "postCreateCommand": "./scripts/build.sh || true",
   "features": {},
   "customizations": {
@@ -19,7 +10,30 @@
       "extensions": [
         "vscjava.vscode-java-pack",
         "redhat.java"
-      ]
+      ],
+      "mcp": {
+        "servers": {
+          "context7": {
+            "type": "sse",
+            "url": "https://mcp.context7.com/mcp"
+          },
+          "playwright": {
+            "command": "npx",
+            "args": [
+              "-y",
+              "@modelcontextprotocol/server-playwright"
+            ],
+            "env": {}
+          },
+          "markitdown": {
+            "command": "uvx",
+            "args": [
+              "mcp-markitdown"
+            ],
+            "env": {}
+          }
+        }
+      }
     }
   }
 }
