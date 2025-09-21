@@ -14,7 +14,6 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import java.io.File;
-import java.lang.reflect.Method;
 import java.util.*;
 import java.util.function.Function;
 
@@ -33,58 +32,7 @@ public class HtmlToAdfConverter {
     private String currentPageId; // Context for image uploads
     private Function<String, File> diagramResolver; // Function to resolve local diagram files
     
-    // Map des balises HTML vers les méthodes de conversion ADF
-    private static final Map<String, String> HTML_TO_ADF_MAPPING = new HashMap<>();
-    
-    static {
-        // Éléments de structure
-        HTML_TO_ADF_MAPPING.put("h1", "heading1");
-        HTML_TO_ADF_MAPPING.put("h2", "heading2");
-        HTML_TO_ADF_MAPPING.put("h3", "heading3");
-        HTML_TO_ADF_MAPPING.put("h4", "heading4");
-        HTML_TO_ADF_MAPPING.put("h5", "heading5");
-        HTML_TO_ADF_MAPPING.put("h6", "heading6");
-        HTML_TO_ADF_MAPPING.put("p", "paragraph");
-        HTML_TO_ADF_MAPPING.put("div", "paragraph");
-        HTML_TO_ADF_MAPPING.put("section", "paragraph");
-        HTML_TO_ADF_MAPPING.put("article", "paragraph");
-        
-        // Éléments de formatage
-        HTML_TO_ADF_MAPPING.put("strong", "strong");
-        HTML_TO_ADF_MAPPING.put("b", "strong");
-        HTML_TO_ADF_MAPPING.put("em", "emphasis");
-        HTML_TO_ADF_MAPPING.put("i", "emphasis");
-        HTML_TO_ADF_MAPPING.put("u", "underline");
-        HTML_TO_ADF_MAPPING.put("s", "strike");
-        HTML_TO_ADF_MAPPING.put("strike", "strike");
-        HTML_TO_ADF_MAPPING.put("del", "strike");
-        HTML_TO_ADF_MAPPING.put("code", "code");
-        HTML_TO_ADF_MAPPING.put("kbd", "code");
-        HTML_TO_ADF_MAPPING.put("samp", "code");
-        HTML_TO_ADF_MAPPING.put("var", "code");
-        
-        // Éléments de liste
-        HTML_TO_ADF_MAPPING.put("ul", "bulletList");
-        HTML_TO_ADF_MAPPING.put("ol", "numberedList");
-        HTML_TO_ADF_MAPPING.put("li", "listItem");
-        
-        // Éléments de tableau
-        HTML_TO_ADF_MAPPING.put("table", "table");
-        HTML_TO_ADF_MAPPING.put("thead", "tableHeader");
-        HTML_TO_ADF_MAPPING.put("tbody", "tableBody");
-        HTML_TO_ADF_MAPPING.put("tfoot", "tableFooter");
-        HTML_TO_ADF_MAPPING.put("tr", "tableRow");
-        HTML_TO_ADF_MAPPING.put("th", "tableHeaderCell");
-        HTML_TO_ADF_MAPPING.put("td", "tableCell");
-        
-        // Éléments spéciaux
-        HTML_TO_ADF_MAPPING.put("blockquote", "blockquote");
-        HTML_TO_ADF_MAPPING.put("pre", "codeBlock");
-        HTML_TO_ADF_MAPPING.put("hr", "rule");
-        HTML_TO_ADF_MAPPING.put("br", "hardBreak");
-        HTML_TO_ADF_MAPPING.put("a", "link");
-        HTML_TO_ADF_MAPPING.put("img", "image");
-    }
+    // (supprimé) Ancienne map de correspondance HTML->ADF non utilisée
     
     /**
      * Sets the image upload manager for handling external images.
@@ -173,6 +121,9 @@ public class HtmlToAdfConverter {
             
             // Process tables using the post-processor (only once)
             String processedJson = AdfTablePostProcessor.postProcessTables(adfJson);
+
+            // Enforce center alignment for paragraphs/headings/mediaSingle across the document
+            processedJson = AdfAlignmentPostProcessor.centerAlignAll(processedJson);
             
             logger.info("Successfully converted HTML to ADF JSON with native tables");
             return processedJson;
@@ -209,76 +160,9 @@ public class HtmlToAdfConverter {
         }
     }
     
-    /**
-     * Post-processes a Document to replace table markers with native ADF table structures.
-     */
-    private Document postProcessTablesInDocument(Document doc) {
-        try {
-            // Convert document to JSON
-            String adfJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(doc);
-            
-            // Process tables using the post-processor
-            String processedJson = AdfTablePostProcessor.postProcessTables(adfJson);
-            
-            // If processing changed the JSON, we need to create a new document
-            if (!adfJson.equals(processedJson)) {
-                logger.debug("Table post-processing modified the document");
-                // Try to convert processed JSON back to Document
-                try {
-                    JsonNode processedNode = objectMapper.readTree(processedJson);
-                    // For now, we'll just log the processed JSON since Document reconstruction is complex
-                    logger.info("Tables successfully converted to native ADF format");
-                    logger.debug("Processed ADF with native tables: {}", processedJson);
-                } catch (Exception e) {
-                    logger.warn("Could not parse processed JSON", e);
-                }
-            }
-            
-            logger.info("Successfully converted HTML to ADF document");
-            return doc;
-            
-        } catch (Exception e) {
-            logger.warn("Error during table post-processing", e);
-            throw new IllegalStateException("Post-traitement des tableaux ADF échoué", e);
-        }
-    }
     
-    /**
-     * Converts multiple HTML sections to ADF document.
-     * 
-     * @param sections map of section titles to HTML content
-     * @param mainTitle the main document title
-     * @return ADF document
-     */
-    public Document convertSectionsToAdf(Map<String, String> sections, String mainTitle) {
-        logger.info("Converting {} sections to ADF document: {}", sections.size(), mainTitle);
-        
-        try {
-            Document doc = Document.create();
-            
-            // Process each section (no main title added - Confluence handles page titles)
-            for (Map.Entry<String, String> section : sections.entrySet()) {
-                String sectionTitle = section.getKey();
-                String sectionContent = section.getValue();
-                
-                // Add section heading
-                doc = doc.h2(sectionTitle);
-                
-                // Process section content
-                doc = processHtmlContent(doc, sectionContent);
-                
-                // Add spacing between sections
-                doc = doc.paragraph("");
-            }
-            
-            logger.info("Successfully converted {} sections to ADF document", sections.size());
-            return doc;
-            
-        } catch (Exception e) {
-            logger.error("Error converting sections to ADF", e);
-            throw new IllegalStateException("Conversion de sections HTML vers ADF échouée", e);
-        }
-    }
+    
+    
     
     /**
      * Processes HTML content and converts it to ADF elements using JSoup parser.
@@ -614,83 +498,6 @@ public class HtmlToAdfConverter {
     }
     
     /**
-     * Extracts text content from HTML element, preserving some inline formatting.
-     */    /**
-     * Extracts text from an element while preserving basic formatting through markdown-like syntax.
-     */
-    private String extractFormattedText(Element element) {
-        StringBuilder result = new StringBuilder();
-        
-        for (org.jsoup.nodes.Node node : element.childNodes()) {
-            if (node instanceof org.jsoup.nodes.TextNode) {
-                // Texte direct avec décodage des entités HTML
-                String text = ((org.jsoup.nodes.TextNode) node).text();
-                text = cleanText(text); // Cette méthode décode maintenant les entités HTML
-                result.append(text);
-            } else if (node instanceof Element) {
-                Element childElement = (Element) node;
-                String tagName = childElement.tagName().toLowerCase();
-                String innerText = cleanText(childElement.text()); // Décodage des entités HTML
-                
-                switch (tagName) {
-                    case "strong":
-                    case "b":
-                        result.append("**").append(innerText).append("**");
-                        break;
-                    case "em":
-                    case "i":
-                        result.append("*").append(innerText).append("*");
-                        break;
-                    case "u":
-                        result.append("_").append(innerText).append("_");
-                        break;
-                    case "s":
-                    case "strike":
-                    case "del":
-                        result.append("~~").append(innerText).append("~~");
-                        break;
-                    case "code":
-                    case "kbd":
-                    case "samp":
-                    case "var":
-                        result.append("`").append(innerText).append("`");
-                        break;
-                    case "sub":
-                        result.append("~").append(innerText).append("~");
-                        break;
-                    case "sup":
-                        result.append("^").append(innerText).append("^");
-                        break;
-                    case "a":
-                        String href = childElement.attr("href");
-                        if (!href.isEmpty()) {
-                            result.append("[").append(innerText).append("](").append(href).append(")");
-                        } else {
-                            result.append(innerText);
-                        }
-                        break;
-                    case "mark":
-                        // Surlignage avec une notation spéciale
-                        result.append("==").append(innerText).append("==");
-                        break;
-                    case "small":
-                        result.append("(").append(innerText).append(")");
-                        break;
-                    case "br":
-                        result.append("\n");
-                        break;
-                    default:
-                        // Pour les autres balises, traitement récursif
-                        result.append(extractFormattedText(childElement));
-                        break;
-                }
-            }
-        }
-        
-        return result.toString();
-    }
-    
-    /**
      * Processes an unordered list element.
      */
     private Document processBulletList(Document doc, Element element) {
@@ -892,76 +699,7 @@ public class HtmlToAdfConverter {
         return injectGenericAdfNode(doc, mediaSingle);
     }
     
-    /**
-     * Fallback method that creates a more structured table representation
-     * when native ADF table injection fails.
-     */
-    private Document processTableFallback(Document doc, Element table) {
-        try {
-            // Add table separator for clarity
-            doc = doc.rule();
-            
-            // Get all rows to determine structure
-            Elements allRows = table.select("tr");
-            if (allRows.isEmpty()) {
-                return doc.paragraph("Empty table");
-            }
-            
-            // Find header rows (containing th elements or in thead)
-            Elements headerRows = table.select("thead tr, tr:has(th)");
-            Elements bodyRows = table.select("tbody tr, tr:not(:has(th))");
-            
-            // If no explicit header/body distinction, treat first row as header if it contains th
-            if (headerRows.isEmpty() && bodyRows.isEmpty()) {
-                bodyRows = allRows;
-            }
-            
-            // Process headers if they exist
-            if (!headerRows.isEmpty()) {
-                Elements headerCells = headerRows.first().select("th, td");
-                if (!headerCells.isEmpty()) {
-                    // Create header row as emphasized paragraphs
-                    StringBuilder headerText = new StringBuilder();
-                    for (int i = 0; i < headerCells.size(); i++) {
-                        if (i > 0) headerText.append(" | ");
-                        headerText.append(getElementText(headerCells.get(i)).trim());
-                    }
-                    doc = doc.paragraph("📋 " + headerText.toString());
-                    
-                    // Add separator line
-                    StringBuilder separator = new StringBuilder();
-                    for (int i = 0; i < headerCells.size(); i++) {
-                        if (i > 0) separator.append(" | ");
-                        separator.append("---");
-                    }
-                    doc = doc.paragraph(separator.toString());
-                }
-            }
-            
-            // Process body rows
-            for (Element row : bodyRows) {
-                Elements cells = row.select("td, th");
-                if (!cells.isEmpty()) {
-                    StringBuilder rowText = new StringBuilder();
-                    for (int i = 0; i < cells.size(); i++) {
-                        if (i > 0) rowText.append(" | ");
-                        String cellText = getElementText(cells.get(i)).trim();
-                        if (cellText.isEmpty()) cellText = " ";
-                        rowText.append(cellText);
-                    }
-                    doc = doc.paragraph(rowText.toString());
-                }
-            }
-            
-            // Add table separator for clarity
-            doc = doc.rule();
-            
-            return doc;
-        } catch (Exception e) {
-            logger.warn("Error processing table fallback", e);
-            throw new IllegalStateException("Traitement de tableau de secours échoué", e);
-        }
-    }
+    
 
     /**
      * Processes a blockquote element with native ADF blockquote.
@@ -1026,16 +764,7 @@ public class HtmlToAdfConverter {
         return doc;
     }
     
-    /**
-     * Processes semantic block elements (header, footer, main, nav, aside).
-     */
-    private Document processSemanticBlock(Document doc, Element element, String tagName) {
-        String text = getElementText(element);
-        if (!text.trim().isEmpty()) {
-            return doc.h3(tagName.toUpperCase() + ": " + text);
-        }
-        return doc;
-    }
+    
     
     /**
      * Processes figure elements.
@@ -1404,16 +1133,7 @@ public class HtmlToAdfConverter {
         return decodedText.trim().replaceAll("\\s+", " ");
     }
     
-    /**
-     * Creates a fallback ADF document when conversion fails.
-     */
-    private Document createFallbackDocument(String title, String content) {
-        logger.warn("Creating fallback ADF document for: {}", title);
-        
-        return Document.create()
-                .paragraph("Content processing failed. Raw content:")
-                .paragraph(content != null ? content : "No content available");
-    }
+    
     
     /**
      * Détecte si un élément contient du formatage inline (strong, em, code, links avec href, etc.).

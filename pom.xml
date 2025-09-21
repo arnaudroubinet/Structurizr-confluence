@@ -77,6 +77,13 @@
             <artifactId>asciidoctorj</artifactId>
             <version>2.5.10</version>
         </dependency>
+
+            <!-- Markdown conversion (CommonMark + extensions) -->
+            <dependency>
+                <groupId>com.vladsch.flexmark</groupId>
+                <artifactId>flexmark-all</artifactId>
+                <version>0.64.8</version>
+            </dependency>
         
         <!-- JSoup for HTML parsing -->
         <dependency>

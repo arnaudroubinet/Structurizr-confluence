@@ -3,6 +3,7 @@ package com.structurizr.confluence.processor;
 import org.asciidoctor.Asciidoctor;
 import org.asciidoctor.Options;
 import org.asciidoctor.SafeMode;
+import org.asciidoctor.Attributes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,12 +65,16 @@ public class AsciiDocConverter {
         try {
             logger.debug("Converting AsciiDoc content to HTML for document: {}", title);
             
-            // Configure conversion options
-            Options options = Options.builder()
-                    .safe(SafeMode.UNSAFE) // Allow all content
-                    .backend("html5")
-                    .standalone(false) // Only body content, no full HTML document
-                    .build();
+        // Configure conversion options: ensure the document title is rendered as H1 using showtitle
+        Attributes attrs = Attributes.builder()
+            .showTitle(true)
+            .build();
+        Options options = Options.builder()
+            .safe(SafeMode.UNSAFE) // Allow all content
+            .backend("html5")
+            .standalone(false) // Only body content, no full HTML document
+            .attributes(attrs)
+            .build();
             
             // Process AsciiDoc content and handle diagram embeds
             String processedContent = preprocessAsciiDocContent(asciiDocContent, workspaceId, branchName);
@@ -105,13 +110,16 @@ public class AsciiDocConverter {
         try {
             logger.debug("Converting AsciiDoc content to HTML with custom attributes for document: {}", title);
             
-            // Configure conversion options with custom attributes
-            // Note: Using deprecated attributes method for compatibility
-            Options options = Options.builder()
-                    .safe(SafeMode.UNSAFE)
-                    .backend("html5")
-                    .standalone(false)
-                    .build();
+        // Configure conversion options with custom attributes and showtitle
+        Attributes attrs = Attributes.builder()
+            .showTitle(true)
+            .build();
+        Options options = Options.builder()
+            .safe(SafeMode.UNSAFE)
+            .backend("html5")
+            .standalone(false)
+            .attributes(attrs)
+            .build();
             
             // Process AsciiDoc content and handle diagram embeds
             String processedContent = preprocessAsciiDocContent(asciiDocContent);

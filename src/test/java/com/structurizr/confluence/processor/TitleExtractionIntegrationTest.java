@@ -117,4 +117,46 @@ class TitleExtractionIntegrationTest {
         
         logger.info("✅ SUCCÈS : Le fallback au nom de fichier fonctionne correctement");
     }
+
+       @Test
+       void testFallbackToFileNameWhenWhitespaceOnlyH1() {
+              logger.info("=== TEST : FALLBACK AU NOM DE FICHIER QUAND H1 EST VIDE/ESPACE ===");
+
+              HtmlToAdfConverter converter = new HtmlToAdfConverter();
+
+              // Contenu avec un H1 ne contenant que des espaces (doit être ignoré)
+              String htmlContent = """
+                     <h1>   </h1>
+                     <p>This document begins with a whitespace-only H1.</p>
+                     <h2>Section 1</h2>
+                     <p>More content.</p>
+                     """;
+
+              String originalFileName = "03_runtime_view.adoc";
+              String branchName = "feature/runtime";
+
+              logger.info("Nom de fichier original: '{}'", originalFileName);
+              logger.info("Contenu HTML (H1 vide/espaces):\n{}", htmlContent);
+
+              // Extraire le titre (doit être null/vidé après trim)
+              String extractedTitle = converter.extractPageTitleOnly(htmlContent);
+              String actualTitle = (extractedTitle != null && !extractedTitle.trim().isEmpty()) ? extractedTitle : originalFileName;
+
+              // Créer le titre de page final
+              String pageTitle = branchName + " - " + actualTitle;
+
+              logger.info("Titre extrait: '{}'", extractedTitle);
+              logger.info("Titre final (fallback): '{}'", actualTitle);
+              logger.info("Titre de page Confluence: '{}'", pageTitle);
+
+              // Vérifications
+              assert extractedTitle == null || extractedTitle.trim().isEmpty() :
+                        "Aucun titre ne devrait être extrait car le H1 est vide/espaces";
+              assert actualTitle.equals(originalFileName) :
+                        "Le titre final devrait être le nom de fichier en fallback";
+              assert pageTitle.equals("feature/runtime - 03_runtime_view.adoc") :
+                        "Le titre de page devrait utiliser le nom de fichier";
+
+              logger.info("✅ SUCCÈS : Le fallback au nom de fichier fonctionne correctement quand le H1 est vide/espaces");
+       }
 }
