@@ -600,9 +600,21 @@ public class ConfluenceClient {
             return;
         }
         
+        cleanPageTreeById(pageId);
+    }
+
+    /**
+     * Cleans a page tree by deleting a specific page and all its descendants using page ID.
+     * 
+     * @param pageId the ID of the root page to clean
+     * @throws IOException if the cleanup fails
+     */
+    public void cleanPageTreeById(String pageId) throws IOException {
+        logger.info("Starting cleanup of page tree for ID: {}", pageId);
+        
         // Get all descendant pages
         List<String> descendantIds = getPageDescendants(pageId);
-        logger.info("Found {} pages in tree starting from '{}'", descendantIds.size(), pageTitle);
+        logger.info("Found {} pages in tree starting from page ID '{}'", descendantIds.size(), pageId);
         
         // Delete all descendants (children first, then the root)
         for (String descendantId : descendantIds) {
@@ -617,12 +629,12 @@ public class ConfluenceClient {
         // Finally delete the root page
         try {
             deletePage(pageId);
-            logger.info("Deleted root page: {}", pageTitle);
+            logger.info("Deleted root page ID: {}", pageId);
         } catch (IOException e) {
             logger.warn("Failed to delete root page {}", pageId, e);
         }
         
-        logger.info("Page tree cleanup completed for: {}", pageTitle);
+        logger.info("Page tree cleanup completed for ID: {}", pageId);
     }
 
     /**

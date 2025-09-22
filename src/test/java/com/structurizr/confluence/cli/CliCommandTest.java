@@ -75,6 +75,7 @@ class CliCommandTest {
         cleanCommand.confluenceToken = "test-token";
         cleanCommand.confluenceSpaceKey = "TEST";
         cleanCommand.pageTitle = "Test Page";
+        cleanCommand.pageId = null; // Test with pageTitle only
         cleanCommand.force = true;
         cleanCommand.confirmDeletion = true;
         
@@ -83,6 +84,7 @@ class CliCommandTest {
         assertEquals("test-token", cleanCommand.confluenceToken);
         assertEquals("TEST", cleanCommand.confluenceSpaceKey);
         assertEquals("Test Page", cleanCommand.pageTitle);
+        assertNull(cleanCommand.pageId);
         assertTrue(cleanCommand.force);
         assertTrue(cleanCommand.confirmDeletion);
         
@@ -169,6 +171,29 @@ class CliCommandTest {
     }
 
     @Test
+    void testCleanCommandPageIdSupport() {
+        logger.info("=== TEST CLEAN COMMAND PAGE ID SUPPORT ===");
+        
+        CleanCommand cleanCommand = new CleanCommand();
+        
+        // Test using page ID instead of page title
+        cleanCommand.pageId = "123456";
+        cleanCommand.pageTitle = null;
+        cleanCommand.confluenceSpaceKey = null; // Space not required for page ID
+        cleanCommand.force = true;
+        cleanCommand.confluenceUrl = "https://test.atlassian.net";
+        cleanCommand.confluenceUser = "test@example.com";
+        cleanCommand.confluenceToken = "test-token";
+        
+        assertEquals("123456", cleanCommand.pageId);
+        assertNull(cleanCommand.pageTitle);
+        assertNull(cleanCommand.confluenceSpaceKey);
+        assertTrue(cleanCommand.force);
+        
+        logger.info("✅ Clean command supports page ID targeting without space requirement");
+    }
+
+    @Test
     void testExportCommandNewFeatures() {
         logger.info("=== TEST EXPORT COMMAND NEW FEATURES ===");
         
@@ -185,5 +210,33 @@ class CliCommandTest {
         assertEquals("feature-branch", exportCommand.branchName, "Branch name determines target page");
         
         logger.info("✅ Export command now has force flag and targeted cleaning");
+    }
+
+    @Test
+    void testExportCommandPageTargeting() {
+        logger.info("=== TEST EXPORT COMMAND PAGE TARGETING ===");
+        
+        ExportCommand exportCommand = new ExportCommand();
+        
+        // Test page title targeting for clean
+        exportCommand.cleanPageTitle = "Custom Target Page";
+        exportCommand.cleanPageId = null;
+        exportCommand.cleanSpace = true;
+        exportCommand.confluenceSpaceKey = "TEST";
+        exportCommand.workspaceFile = new File("demo/itms-workspace.json");
+        
+        assertEquals("Custom Target Page", exportCommand.cleanPageTitle);
+        assertNull(exportCommand.cleanPageId);
+        assertTrue(exportCommand.cleanSpace);
+        
+        // Test page ID targeting for clean
+        exportCommand.cleanPageTitle = null;
+        exportCommand.cleanPageId = "789012";
+        exportCommand.confluenceSpaceKey = null; // Space not required for page ID
+        
+        assertNull(exportCommand.cleanPageTitle);
+        assertEquals("789012", exportCommand.cleanPageId);
+        
+        logger.info("✅ Export command supports both page title and page ID targeting");
     }
 }

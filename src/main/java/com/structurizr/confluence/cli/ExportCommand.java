@@ -49,8 +49,8 @@ public class ExportCommand implements Runnable {
 
     @CommandLine.Option(
         names = {"-s", "--confluence-space"}, 
-        description = "Confluence space key",
-        required = true
+        description = "Confluence space key (required when using --page-title)",
+        required = false
     )
     String confluenceSpaceKey;
 
@@ -76,6 +76,20 @@ public class ExportCommand implements Runnable {
     boolean cleanSpace;
 
     @CommandLine.Option(
+        names = {"--page-title"}, 
+        description = "Target page title for cleaning (overrides branch-based target)",
+        required = false
+    )
+    String cleanPageTitle;
+
+    @CommandLine.Option(
+        names = {"--page-id"}, 
+        description = "Target page ID for cleaning (overrides branch-based target)",
+        required = false
+    )
+    String cleanPageId;
+
+    @CommandLine.Option(
         names = {"-f", "--force"}, 
         description = "Force operation without confirmation prompt",
         defaultValue = "false"
@@ -85,10 +99,32 @@ public class ExportCommand implements Runnable {
     @Override
     public void run() {
         try {
+            // Validate parameters
+            if (cleanPageTitle != null && cleanPageId != null) {
+                System.err.println("❌ Error: Cannot specify both --page-title and --page-id");
+                System.exit(1);
+                return;
+            }
+            
+            if (cleanPageTitle != null && confluenceSpaceKey == null) {
+                System.err.println("❌ Error: --confluence-space is required when using --page-title");
+                System.exit(1);
+                return;
+            }
+            
+            // Space is still required for normal export operations
+            if (confluenceSpaceKey == null && cleanPageId == null) {
+                System.err.println("❌ Error: --confluence-space is required (except when using --page-id for cleaning only)");
+                System.exit(1);
+                return;
+            }
+
             logger.info("Starting Structurizr workspace export to Confluence...");
             logger.info("Workspace file: {}", workspaceFile.getAbsolutePath());
             logger.info("Confluence URL: {}", confluenceUrl);
-            logger.info("Confluence space: {}", confluenceSpaceKey);
+            if (confluenceSpaceKey != null) {
+                logger.info("Confluence space: {}", confluenceSpaceKey);
+            }
             logger.info("Branch: {}", branchName);
 
             // Create Confluence configuration
@@ -109,19 +145,25 @@ public class ExportCommand implements Runnable {
 
             // Clean target page tree if requested
             if (cleanSpace) {
-                String targetPageTitle = branchName; // The main page title
+                String targetPageTitle = cleanPageTitle != null ? cleanPageTitle : branchName;
+                String targetPageId = cleanPageId;
                 
                 // Ask for confirmation unless force flag is used
                 if (!force) {
-                    if (!promptForCleanConfirmation(targetPageTitle)) {
+                    if (!promptForCleanConfirmation(targetPageTitle, targetPageId)) {
                         System.out.println("❌ Operation cancelled by user");
                         System.exit(1);
                         return;
                     }
                 }
                 
-                logger.info("Cleaning target page tree: {}", targetPageTitle);
-                exporter.cleanPageTree(targetPageTitle);
+                if (targetPageId != null) {
+                    logger.info("Cleaning target page tree by ID: {}", targetPageId);
+                    exporter.cleanPageTreeById(targetPageId);
+                } else {
+                    logger.info("Cleaning target page tree: {}", targetPageTitle);
+                    exporter.cleanPageTree(targetPageTitle);
+                }
                 logger.info("Page tree cleaning completed");
             }
 
@@ -139,8 +181,20 @@ public class ExportCommand implements Runnable {
         }
     }
 
-    private boolean promptForCleanConfirmation(String targetPageTitle) {
-        System.out.printf("⚠️  The --clean option will delete the page '%s' and ALL its subpages before export.%n", targetPageTitle);
+    private boolean promptForCleanConfirmation(String targetPageTitle, String targetPageId) {
+        String target;
+        String spaceInfo = "";
+        
+        if (targetPageId != null) {
+            target = "page ID '" + targetPageId + "'";
+        } else {
+            target = "page '" + targetPageTitle + "'";
+            if (confluenceSpaceKey != null) {
+                spaceInfo = " in space '" + confluenceSpaceKey + "'";
+            }
+        }
+        
+        System.out.printf("⚠️  The --clean option will delete the %s%s and ALL its subpages before export.%n", target, spaceInfo);
         System.out.print("Are you sure you want to continue? (yes/no): ");
         
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {

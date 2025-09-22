@@ -242,6 +242,18 @@ public class ConfluenceExporter {
         logger.info("Page tree cleanup completed for: {}", pageTitle);
     }
 
+    /**
+     * Cleans a specific page tree by deleting the page and all its subpages using page ID.
+     * 
+     * @param pageId the ID of the page to clean (including all subpages)
+     * @throws Exception if cleanup fails
+     */
+    public void cleanPageTreeById(String pageId) throws Exception {
+        logger.info("Starting page tree cleanup for ID: {}", pageId);
+        confluenceClient.cleanPageTreeById(pageId);
+        logger.info("Page tree cleanup completed for ID: {}", pageId);
+    }
+
     public void export(Workspace workspace) throws Exception {
         export(workspace, workspace.getName());
     }

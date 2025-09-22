@@ -43,17 +43,24 @@ public class CleanCommand implements Runnable {
 
     @CommandLine.Option(
         names = {"-s", "--confluence-space"}, 
-        description = "Confluence space key",
-        required = true
+        description = "Confluence space key (required when using --page-title)",
+        required = false
     )
     String confluenceSpaceKey;
 
     @CommandLine.Option(
         names = {"-p", "--page-title"}, 
         description = "Target page title (cleans this page and all its subpages)",
-        required = true
+        required = false
     )
     String pageTitle;
+
+    @CommandLine.Option(
+        names = {"--page-id"}, 
+        description = "Target page ID (cleans this page and all its subpages)",
+        required = false
+    )
+    String pageId;
 
     @CommandLine.Option(
         names = {"-f", "--force"}, 
@@ -72,6 +79,25 @@ public class CleanCommand implements Runnable {
     @Override
     public void run() {
         try {
+            // Validate parameters
+            if (pageTitle == null && pageId == null) {
+                System.err.println("❌ Error: Either --page-title or --page-id must be specified");
+                System.exit(1);
+                return;
+            }
+            
+            if (pageTitle != null && pageId != null) {
+                System.err.println("❌ Error: Cannot specify both --page-title and --page-id");
+                System.exit(1);
+                return;
+            }
+            
+            if (pageTitle != null && confluenceSpaceKey == null) {
+                System.err.println("❌ Error: --confluence-space is required when using --page-title");
+                System.exit(1);
+                return;
+            }
+
             // Check if confirmation is needed
             if (!force && !confirmDeletion) {
                 if (!promptForConfirmation()) {
@@ -83,17 +109,28 @@ public class CleanCommand implements Runnable {
 
             logger.info("Starting Confluence page tree cleanup...");
             logger.info("Confluence URL: {}", confluenceUrl);
-            logger.info("Confluence space: {}", confluenceSpaceKey);
-            logger.info("Target page: {}", pageTitle);
+            if (confluenceSpaceKey != null) {
+                logger.info("Confluence space: {}", confluenceSpaceKey);
+            }
+            if (pageTitle != null) {
+                logger.info("Target page title: {}", pageTitle);
+            } else {
+                logger.info("Target page ID: {}", pageId);
+            }
 
-            // Create Confluence configuration
+            // Create Confluence configuration - space can be null for page ID operations
             ConfluenceConfig config = new ConfluenceConfig(confluenceUrl, confluenceUser, confluenceToken, confluenceSpaceKey);
 
             // Create exporter and clean page tree
             ConfluenceExporter exporter = new ConfluenceExporter(config);
             
-            logger.info("Cleaning page tree starting from: {}", pageTitle);
-            exporter.cleanPageTree(pageTitle);
+            if (pageTitle != null) {
+                logger.info("Cleaning page tree starting from title: {}", pageTitle);
+                exporter.cleanPageTree(pageTitle);
+            } else {
+                logger.info("Cleaning page tree starting from ID: {}", pageId);
+                exporter.cleanPageTreeById(pageId);
+            }
             logger.info("Page tree cleaning completed");
 
             System.out.println("✅ Confluence page tree cleaned successfully!");
@@ -106,7 +143,10 @@ public class CleanCommand implements Runnable {
     }
 
     private boolean promptForConfirmation() {
-        System.out.printf("⚠️  This operation will delete the page '%s' and ALL its subpages in space '%s'.%n", pageTitle, confluenceSpaceKey);
+        String target = pageTitle != null ? "page '" + pageTitle + "'" : "page ID '" + pageId + "'";
+        String spaceInfo = confluenceSpaceKey != null ? " in space '" + confluenceSpaceKey + "'" : "";
+        
+        System.out.printf("⚠️  This operation will delete the %s%s and ALL its subpages.%n", target, spaceInfo);
         System.out.print("Are you sure you want to continue? (yes/no): ");
         
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {

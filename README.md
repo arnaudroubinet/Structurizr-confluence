@@ -86,24 +86,47 @@ java -jar structurizr-confluence-1.0.0.jar export \
   --branch main \
   --clean \
   --force
+
+# Target specific page by title for cleaning
+./structurizr-confluence-linux export \
+  --confluence-url https://yourcompany.atlassian.net \
+  --confluence-user your-email@company.com \
+  --confluence-token your-api-token \
+  --confluence-space SPACE \
+  --workspace path/to/workspace.json \
+  --branch main \
+  --clean \
+  --page-title "Custom Target Page"
+
+# Target specific page by ID for cleaning (no space required for page ID)
+./structurizr-confluence-linux export \
+  --confluence-url https://yourcompany.atlassian.net \
+  --confluence-user your-email@company.com \
+  --confluence-token your-api-token \
+  --workspace path/to/workspace.json \
+  --branch main \
+  --clean \
+  --page-id "123456"
 ```
 
 Options:
 - `-u, --confluence-url`: Confluence base URL
 - `-e, --confluence-user`: Confluence user email
 - `-t, --confluence-token`: Confluence API token  
-- `-s, --confluence-space`: Confluence space key
+- `-s, --confluence-space`: Confluence space key (required when using --page-title)
 - `-w, --workspace`: Path to Structurizr workspace JSON file
 - `-b, --branch`: Branch name for versioning (default: main)
 - `--clean`: Clean target page tree before export
+- `--page-title`: Target page title for cleaning (overrides branch-based target)
+- `--page-id`: Target page ID for cleaning (overrides branch-based target)
 - `-f, --force`: Force operation without confirmation prompt
 
 #### Clean Page Tree
 
-Remove a specific page and all its subpages from Confluence:
+Remove a specific page and all its subpages from Confluence using either page title or page ID:
 
 ```bash
-# Using native executable
+# Clean by page title (requires space)
 ./structurizr-confluence-linux clean \
   --confluence-url https://yourcompany.atlassian.net \
   --confluence-user your-email@company.com \
@@ -111,7 +134,14 @@ Remove a specific page and all its subpages from Confluence:
   --confluence-space SPACE \
   --page-title "Page Name"
 
-# Using JAR  
+# Clean by page ID (no space required - page IDs are globally unique)
+./structurizr-confluence-linux clean \
+  --confluence-url https://yourcompany.atlassian.net \
+  --confluence-user your-email@company.com \
+  --confluence-token your-api-token \
+  --page-id "123456"
+
+# Using JAR with page title
 java -jar structurizr-confluence-1.0.0.jar clean \
   --confluence-url https://yourcompany.atlassian.net \
   --confluence-user your-email@company.com \
