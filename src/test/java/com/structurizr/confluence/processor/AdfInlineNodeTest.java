@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Method;
 
 /**
- * Test pour explorer les nœuds inline et les méthodes de création de liens.
+ * Test to explore les nœuds inline et les méthodes de création de liens.
  */
 class AdfInlineNodeTest {
     private static final Logger logger = LoggerFactory.getLogger(AdfInlineNodeTest.class);
@@ -42,7 +42,6 @@ class AdfInlineNodeTest {
             }
             
             // Essayons de créer des nœuds de texte
-            logger.info("\n=== TEST DE CRÉATION DE NŒUDS ===");
             
             try {
                 Method textMethod = inlineNodeClass.getMethod("text", String.class);

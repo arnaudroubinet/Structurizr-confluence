@@ -31,7 +31,6 @@ class ImageUploadManagerTest {
     
     @Test
     void testFilenameExtraction() throws Exception {
-        logger.info("=== TEST FILENAME EXTRACTION ===");
         
         // Test normal URL with filename
         String url1 = "https://structurizr.roubinet.fr/workspace/1/diagrams/context-view.svg";
@@ -56,7 +55,6 @@ class ImageUploadManagerTest {
     
     @Test
     void testMimeTypeDetection() throws Exception {
-        logger.info("=== TEST MIME TYPE DETECTION ===");
         
         ImageUploadManager manager = new ImageUploadManager(confluenceClient);
         
@@ -73,7 +71,6 @@ class ImageUploadManagerTest {
     
     @Test
     void testUploadCaching() throws Exception {
-        logger.info("=== TEST UPLOAD CACHING ===");
         
         // Mock successful upload
         when(confluenceClient.downloadImage(anyString())).thenReturn(new byte[]{1, 2, 3, 4});
@@ -100,7 +97,6 @@ class ImageUploadManagerTest {
     
     @Test
     void testImageHandlingWithUploadManager() throws Exception {
-        logger.info("=== TEST IMAGE HANDLING WITH UPLOAD MANAGER ===");
         
         // Mock successful upload scenario
         when(confluenceClient.downloadImage(anyString())).thenReturn(new byte[]{1, 2, 3, 4});

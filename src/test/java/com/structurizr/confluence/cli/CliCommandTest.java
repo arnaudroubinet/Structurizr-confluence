@@ -17,7 +17,6 @@ class CliCommandTest {
     
     @Test
     void testWorkspaceFileAccess() {
-        logger.info("=== TEST WORKSPACE FILE ACCESS ===");
         
         File demoWorkspace = new File("demo/itms-workspace.json");
         
@@ -32,7 +31,6 @@ class CliCommandTest {
     
     @Test
     void testExportCommandParameters() {
-        logger.info("=== TEST EXPORT COMMAND PARAMETERS ===");
         
         ExportCommand exportCommand = new ExportCommand();
         
@@ -61,7 +59,6 @@ class CliCommandTest {
     
     @Test
     void testCleanCommandParameters() {
-        logger.info("=== TEST CLEAN COMMAND PARAMETERS ===");
         
         CleanCommand cleanCommand = new CleanCommand();
         
@@ -86,7 +83,6 @@ class CliCommandTest {
     
     @Test
     void testLoadCommandParameters() {
-        logger.info("=== TEST LOAD COMMAND PARAMETERS ===");
         
         LoadCommand loadCommand = new LoadCommand();
         
@@ -119,7 +115,6 @@ class CliCommandTest {
     
     @Test
     void testCommandInstantiation() {
-        logger.info("=== TEST COMMAND INSTANTIATION ===");
         
         // Test that all command classes can be instantiated
         assertDoesNotThrow(() -> {

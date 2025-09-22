@@ -13,7 +13,6 @@ public class AdfBehaviorTest {
     
     @Test
     public void testAdfDocumentBehavior() throws Exception {
-        logger.info("=== TEST COMPORTEMENT DOCUMENT ADF ===");
         
         // Test 1: Ajouter plusieurs paragraphes en chaîne
         Document doc = Document.create();
@@ -37,7 +36,6 @@ public class AdfBehaviorTest {
             objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(doc));
         
         // Test 2: Comprendre si l'objet Document est immutable
-        logger.info("\n=== TEST IMMUTABILITÉ ===");
         Document doc1 = Document.create();
         Document doc2 = doc1.paragraph("Paragraph 1");
         Document doc3 = doc2.paragraph("Paragraph 2");

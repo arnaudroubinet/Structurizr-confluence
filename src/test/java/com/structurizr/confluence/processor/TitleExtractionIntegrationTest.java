@@ -5,15 +5,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Test d'intégration pour vérifier que l'extraction de titre fonctionne 
- * correctement dans le contexte complet de l'export Confluence.
+ * Integration test to verify que l'extraction de titre fonctionne 
+ * correctement in the complete context de l'export Confluence.
  */
 class TitleExtractionIntegrationTest {
     private static final Logger logger = LoggerFactory.getLogger(TitleExtractionIntegrationTest.class);
 
     @Test
     void testCompleteExportProcessWithTitleExtraction() {
-        logger.info("=== TEST : PROCESSUS COMPLET D'EXPORT AVEC EXTRACTION DE TITRE ===");
         
         HtmlToAdfConverter converter = new HtmlToAdfConverter();
         
@@ -35,8 +34,8 @@ class TitleExtractionIntegrationTest {
         String originalFileName = "01_introduction_and_goals.adoc";
         String branchName = "main";
         
-        logger.info("Nom de fichier original: '{}'", originalFileName);
-        logger.info("Contenu HTML d'entrée:\n{}", htmlContent);
+        logger.info("Original filename: '{}'", originalFileName);
+        logger.info("Input HTML content:\n{}", htmlContent);
         
         // Étape 1: Extraire le titre du contenu HTML (comme fait dans ConfluenceExporter)
         String extractedTitle = converter.extractPageTitleOnly(htmlContent);
@@ -71,7 +70,7 @@ class TitleExtractionIntegrationTest {
         assert adfJson.contains("\"text\" : \"This document describes the introduction and goals of the ITMS system.\"") : 
                "Le paragraphe principal devrait être présent";
         
-        logger.info("✅ SUCCÈS : Le processus complet d'export avec extraction de titre fonctionne correctement");
+        logger.info("✅ SUCCÈS : Le processus complet d'export avec extraction de titre works correctly");
         logger.info("   - Titre extrait du H1 au lieu du nom de fichier");
         logger.info("   - H1 supprimé du contenu pour éviter la duplication");
         logger.info("   - Structure ADF correctement générée");
@@ -79,7 +78,6 @@ class TitleExtractionIntegrationTest {
     
     @Test
     void testFallbackToFileNameWhenNoH1() {
-        logger.info("=== TEST : FALLBACK AU NOM DE FICHIER QUAND AUCUN H1 ===");
         
         HtmlToAdfConverter converter = new HtmlToAdfConverter();
         
@@ -93,8 +91,8 @@ class TitleExtractionIntegrationTest {
         String originalFileName = "02_architecture_constraints.adoc";
         String branchName = "develop";
         
-        logger.info("Nom de fichier original: '{}'", originalFileName);
-        logger.info("Contenu HTML (sans H1):\n{}", htmlContent);
+        logger.info("Original filename: '{}'", originalFileName);
+        logger.info("HTML content (without H1):\n{}", htmlContent);
         
         // Extraire le titre (devrait être null)
         String extractedTitle = converter.extractPageTitleOnly(htmlContent);
@@ -115,12 +113,11 @@ class TitleExtractionIntegrationTest {
         assert pageTitle.equals("develop - 02_architecture_constraints.adoc") : 
                "Le titre de page devrait utiliser le nom de fichier";
         
-        logger.info("✅ SUCCÈS : Le fallback au nom de fichier fonctionne correctement");
+        logger.info("✅ SUCCÈS : Le fallback au nom de fichier works correctly");
     }
 
        @Test
        void testFallbackToFileNameWhenWhitespaceOnlyH1() {
-              logger.info("=== TEST : FALLBACK AU NOM DE FICHIER QUAND H1 EST VIDE/ESPACE ===");
 
               HtmlToAdfConverter converter = new HtmlToAdfConverter();
 
@@ -135,7 +132,7 @@ class TitleExtractionIntegrationTest {
               String originalFileName = "03_runtime_view.adoc";
               String branchName = "feature/runtime";
 
-              logger.info("Nom de fichier original: '{}'", originalFileName);
+              logger.info("Original filename: '{}'", originalFileName);
               logger.info("Contenu HTML (H1 vide/espaces):\n{}", htmlContent);
 
               // Extraire le titre (doit être null/vidé après trim)
@@ -157,6 +154,6 @@ class TitleExtractionIntegrationTest {
               assert pageTitle.equals("feature/runtime - 03_runtime_view.adoc") :
                         "Le titre de page devrait utiliser le nom de fichier";
 
-              logger.info("✅ SUCCÈS : Le fallback au nom de fichier fonctionne correctement quand le H1 est vide/espaces");
+              logger.info("✅ SUCCÈS : Le fallback au nom de fichier works correctly quand le H1 est vide/espaces");
        }
 }

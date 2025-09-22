@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Method;
 
 /**
- * Test pour explorer l'API Document d'ADF
+ * Test to explore l'API Document d'ADF
  */
 public class ExploreAdfApiTest {
 
@@ -61,6 +61,6 @@ public class ExploreAdfApiTest {
             System.out.println("✗ paragraph(lambda) échoue: " + e.getMessage());
         }
         
-        System.out.println("\nDocument créé avec succès");
+        System.out.println("\nDocument created successfully");
     }
 }

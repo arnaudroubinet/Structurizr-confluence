@@ -46,7 +46,6 @@ class AdfTextExplorationTest {
         
         // Essayons de créer des nœuds Text
         try {
-            logger.info("\n=== TEST DE CRÉATION DE NŒUDS TEXT ===");
             
             // Tester Text.of()
             try {

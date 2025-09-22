@@ -7,14 +7,13 @@ import org.slf4j.LoggerFactory;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Test pour vérifier l'extraction du titre de page depuis le premier H1.
+ * Test to verify l'extraction du titre de page depuis le premier H1.
  */
 class PageTitleExtractionTest {
     private static final Logger logger = LoggerFactory.getLogger(PageTitleExtractionTest.class);
     
     @Test
     void testExtractTitleFromFirstH1() {
-        logger.info("=== TEST : EXTRACTION DU TITRE DEPUIS LE PREMIER H1 ===");
         
         HtmlToAdfConverter converter = new HtmlToAdfConverter();
         
@@ -44,7 +43,6 @@ class PageTitleExtractionTest {
     
     @Test
     void testNoH1InContent() {
-        logger.info("=== TEST : AUCUN H1 DANS LE CONTENU ===");
         
         HtmlToAdfConverter converter = new HtmlToAdfConverter();
         
@@ -70,7 +68,6 @@ class PageTitleExtractionTest {
     
     @Test
     void testConvertToAdfJsonWithH1Title() {
-        logger.info("=== TEST : CONVERSION ADF AVEC TITRE H1 ===");
         
         HtmlToAdfConverter converter = new HtmlToAdfConverter();
         
@@ -98,7 +95,6 @@ class PageTitleExtractionTest {
     
     @Test
     void testMultipleH1OnlyFirstExtracted() {
-        logger.info("=== TEST : MULTIPLES H1 - SEUL LE PREMIER EST EXTRAIT ===");
         
         HtmlToAdfConverter converter = new HtmlToAdfConverter();
         

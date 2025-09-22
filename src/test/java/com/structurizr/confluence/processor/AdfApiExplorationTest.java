@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Method;
 
 /**
- * Test pour explorer l'API ADF Builder et trouver les méthodes de liens disponibles.
+ * Test to explore l'API ADF Builder et trouver les méthodes de liens disponibles.
  */
 class AdfApiExplorationTest {
     private static final Logger logger = LoggerFactory.getLogger(AdfApiExplorationTest.class);
@@ -42,7 +42,6 @@ class AdfApiExplorationTest {
         // Tester si certaines méthodes existent
         try {
             // Test des méthodes courantes
-            logger.info("\n=== TEST DE MÉTHODES SPÉCIFIQUES ===");
             
             // Voir si on peut créer un paragraphe simple
             Document testDoc = Document.create();

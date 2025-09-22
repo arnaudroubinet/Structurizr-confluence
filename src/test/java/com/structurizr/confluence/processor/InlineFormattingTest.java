@@ -16,7 +16,6 @@ class InlineFormattingTest {
     
     @Test
     void testStrongTagShouldCreateStrongMark() {
-        logger.info("=== TEST STRONG : CRÉATION DE MARK STRONG ===");
         
         String htmlWithStrong = "<p>Ceci est <strong>important</strong> à retenir.</p>";
         String adfJson = converter.convertToAdfJson(htmlWithStrong, "Test Strong");
@@ -39,7 +38,6 @@ class InlineFormattingTest {
     
     @Test
     void testEmTagShouldCreateEmMark() {
-        logger.info("=== TEST EM : CRÉATION DE MARK EMPHASIS ===");
         
         String htmlWithEm = "<p>Il faut <em>souligner</em> ce point.</p>";
         String adfJson = converter.convertToAdfJson(htmlWithEm, "Test Em");
@@ -57,7 +55,6 @@ class InlineFormattingTest {
     
     @Test
     void testCodeTagShouldCreateCodeMark() {
-        logger.info("=== TEST CODE : CRÉATION DE MARK CODE ===");
         
         String htmlWithCode = "<p>Utilisez la fonction <code>getElementText()</code> pour extraire le texte.</p>";
         String adfJson = converter.convertToAdfJson(htmlWithCode, "Test Code");
@@ -75,7 +72,6 @@ class InlineFormattingTest {
     
     @Test
     void testUnderlineTagShouldCreateUnderlineMark() {
-        logger.info("=== TEST UNDERLINE : CRÉATION DE MARK UNDERLINE ===");
         
         String htmlWithU = "<p>Ce texte est <u>souligné</u> pour emphasis.</p>";
         String adfJson = converter.convertToAdfJson(htmlWithU, "Test Underline");
@@ -91,7 +87,6 @@ class InlineFormattingTest {
     
     @Test
     void testStrikeTagShouldCreateStrikeMark() {
-        logger.info("=== TEST STRIKE : CRÉATION DE MARK STRIKE ===");
         
         String htmlWithStrike = "<p>Ce texte est <s>barré</s> car obsolète.</p>";
         String adfJson = converter.convertToAdfJson(htmlWithStrike, "Test Strike");
@@ -107,7 +102,6 @@ class InlineFormattingTest {
     
     @Test
     void testMultipleMarksInSameParagraph() {
-        logger.info("=== TEST MULTIPLE MARKS : COMBINAISON DE FORMATAGES ===");
         
         String htmlWithMultiple = "<p>Texte avec <strong>gras</strong>, <em>italique</em> et <code>code</code>.</p>";
         String adfJson = converter.convertToAdfJson(htmlWithMultiple, "Test Multiple");
@@ -130,7 +124,6 @@ class InlineFormattingTest {
     
     @Test
     void testNestedMarksHandling() {
-        logger.info("=== TEST NESTED MARKS : FORMATAGE IMBRIQUÉ ===");
         
         String htmlWithNested = "<p>Texte avec <strong>gras et <em>italique imbriqué</em></strong>.</p>";
         String adfJson = converter.convertToAdfJson(htmlWithNested, "Test Nested");
