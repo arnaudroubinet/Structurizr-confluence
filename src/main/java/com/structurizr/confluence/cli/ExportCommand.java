@@ -9,7 +9,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Path;
 
 /**
@@ -67,10 +70,17 @@ public class ExportCommand implements Runnable {
 
     @CommandLine.Option(
         names = {"--clean"}, 
-        description = "Clean Confluence space before export",
+        description = "Clean target page tree before export",
         defaultValue = "false"
     )
     boolean cleanSpace;
+
+    @CommandLine.Option(
+        names = {"-f", "--force"}, 
+        description = "Force operation without confirmation prompt",
+        defaultValue = "false"
+    )
+    boolean force;
 
     @Override
     public void run() {
@@ -87,13 +97,6 @@ public class ExportCommand implements Runnable {
             // Create exporter
             ConfluenceExporter exporter = new ConfluenceExporter(config);
 
-            // Clean space if requested
-            if (cleanSpace) {
-                logger.info("Cleaning Confluence space: {}", confluenceSpaceKey);
-                exporter.cleanConfluenceSpace();
-                logger.info("Space cleaning completed");
-            }
-
             // Load workspace from file
             logger.info("Loading workspace from: {}", workspaceFile.getAbsolutePath());
             Workspace workspace = WorkspaceUtils.loadWorkspaceFromJson(workspaceFile);
@@ -103,6 +106,24 @@ public class ExportCommand implements Runnable {
                 return;
             }
             logger.info("Workspace loaded successfully: {}", workspace.getName());
+
+            // Clean target page tree if requested
+            if (cleanSpace) {
+                String targetPageTitle = branchName; // The main page title
+                
+                // Ask for confirmation unless force flag is used
+                if (!force) {
+                    if (!promptForCleanConfirmation(targetPageTitle)) {
+                        System.out.println("❌ Operation cancelled by user");
+                        System.exit(1);
+                        return;
+                    }
+                }
+                
+                logger.info("Cleaning target page tree: {}", targetPageTitle);
+                exporter.cleanPageTree(targetPageTitle);
+                logger.info("Page tree cleaning completed");
+            }
 
             // Export workspace
             logger.info("Starting workspace export...");
@@ -115,6 +136,19 @@ public class ExportCommand implements Runnable {
             logger.error("Export failed: {}", e.getMessage(), e);
             System.err.println("❌ Export failed: " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    private boolean promptForCleanConfirmation(String targetPageTitle) {
+        System.out.printf("⚠️  The --clean option will delete the page '%s' and ALL its subpages before export.%n", targetPageTitle);
+        System.out.print("Are you sure you want to continue? (yes/no): ");
+        
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+            String response = reader.readLine();
+            return "yes".equalsIgnoreCase(response) || "y".equalsIgnoreCase(response);
+        } catch (IOException e) {
+            logger.error("Failed to read user input: {}", e.getMessage());
+            return false;
         }
     }
 }

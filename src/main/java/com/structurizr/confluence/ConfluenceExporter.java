@@ -230,6 +230,18 @@ public class ConfluenceExporter {
         logger.info("Confluence space cleanup completed");
     }
 
+    /**
+     * Cleans a specific page tree by deleting the page and all its subpages.
+     * 
+     * @param pageTitle the title of the page to clean (including all subpages)
+     * @throws Exception if cleanup fails
+     */
+    public void cleanPageTree(String pageTitle) throws Exception {
+        logger.info("Starting page tree cleanup for: {}", pageTitle);
+        confluenceClient.cleanPageTree(pageTitle);
+        logger.info("Page tree cleanup completed for: {}", pageTitle);
+    }
+
     public void export(Workspace workspace) throws Exception {
         export(workspace, workspace.getName());
     }

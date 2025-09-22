@@ -75,6 +75,17 @@ java -jar structurizr-confluence-1.0.0.jar export \
   --workspace path/to/workspace.json \
   --branch main \
   --clean
+
+# Force export with cleaning (no confirmation prompt)
+./structurizr-confluence-linux export \
+  --confluence-url https://yourcompany.atlassian.net \
+  --confluence-user your-email@company.com \
+  --confluence-token your-api-token \
+  --confluence-space SPACE \
+  --workspace path/to/workspace.json \
+  --branch main \
+  --clean \
+  --force
 ```
 
 Options:
@@ -84,11 +95,12 @@ Options:
 - `-s, --confluence-space`: Confluence space key
 - `-w, --workspace`: Path to Structurizr workspace JSON file
 - `-b, --branch`: Branch name for versioning (default: main)
-- `--clean`: Clean Confluence space before export
+- `--clean`: Clean target page tree before export
+- `-f, --force`: Force operation without confirmation prompt
 
-#### Clean Confluence Space
+#### Clean Page Tree
 
-Remove all pages from a Confluence space:
+Remove a specific page and all its subpages from Confluence:
 
 ```bash
 # Using native executable
@@ -97,7 +109,7 @@ Remove all pages from a Confluence space:
   --confluence-user your-email@company.com \
   --confluence-token your-api-token \
   --confluence-space SPACE \
-  --confirm
+  --page-title "Page Name"
 
 # Using JAR  
 java -jar structurizr-confluence-1.0.0.jar clean \
@@ -105,10 +117,19 @@ java -jar structurizr-confluence-1.0.0.jar clean \
   --confluence-user your-email@company.com \
   --confluence-token your-api-token \
   --confluence-space SPACE \
-  --confirm
+  --page-title "Page Name"
+
+# Force deletion without confirmation
+./structurizr-confluence-linux clean \
+  --confluence-url https://yourcompany.atlassian.net \
+  --confluence-user your-email@company.com \
+  --confluence-token your-api-token \
+  --confluence-space SPACE \
+  --page-title "Page Name" \
+  --force
 ```
 
-⚠️ **Warning**: This deletes ALL pages in the specified space. Use `--confirm` to proceed.
+⚠️ **Warning**: This deletes the specified page and ALL its subpages. The command will prompt for confirmation unless the `-f`/`--force` flag is used.
 
 #### Load from Structurizr On-Premise
 

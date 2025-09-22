@@ -19,10 +19,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.List;
 import java.util.Map;
 
@@ -581,6 +584,119 @@ public class ConfluenceClient {
 
     /** Record containing attachment details and media identifiers. */
     public static record AttachmentDetails(String attachmentId, String filename, String fileId, String collectionName) {}
+    
+    /**
+     * Cleans a page tree by deleting a specific page and all its descendants.
+     * 
+     * @param pageTitle the title of the root page to clean
+     * @throws IOException if the cleanup fails
+     */
+    public void cleanPageTree(String pageTitle) throws IOException {
+        logger.info("Starting cleanup of page tree: {}", pageTitle);
+        
+        String pageId = findPageByTitle(pageTitle);
+        if (pageId == null) {
+            logger.info("Page '{}' not found, nothing to clean", pageTitle);
+            return;
+        }
+        
+        // Get all descendant pages
+        List<String> descendantIds = getPageDescendants(pageId);
+        logger.info("Found {} pages in tree starting from '{}'", descendantIds.size(), pageTitle);
+        
+        // Delete all descendants (children first, then the root)
+        for (String descendantId : descendantIds) {
+            try {
+                deletePage(descendantId);
+                logger.debug("Deleted page: {}", descendantId);
+            } catch (IOException e) {
+                logger.warn("Failed to delete page {}, continuing with others", descendantId, e);
+            }
+        }
+        
+        // Finally delete the root page
+        try {
+            deletePage(pageId);
+            logger.info("Deleted root page: {}", pageTitle);
+        } catch (IOException e) {
+            logger.warn("Failed to delete root page {}", pageId, e);
+        }
+        
+        logger.info("Page tree cleanup completed for: {}", pageTitle);
+    }
+
+    /**
+     * Gets all descendant page IDs for a given page (children, grandchildren, etc.).
+     * Returns them in reverse order (deepest first) to allow safe deletion.
+     * 
+     * @param pageId the root page ID
+     * @return list of descendant page IDs in deletion order
+     * @throws IOException if the request fails
+     */
+    private List<String> getPageDescendants(String pageId) throws IOException {
+        List<String> allDescendants = new ArrayList<>();
+        getPageDescendantsRecursive(pageId, allDescendants);
+        
+        // Reverse the list so deepest pages are deleted first
+        Collections.reverse(allDescendants);
+        return allDescendants;
+    }
+
+    /**
+     * Recursively collects descendant page IDs.
+     * 
+     * @param pageId the current page ID
+     * @param descendants the list to collect descendants into
+     * @throws IOException if the request fails
+     */
+    private void getPageDescendantsRecursive(String pageId, List<String> descendants) throws IOException {
+        List<String> children = getChildPages(pageId);
+        
+        for (String childId : children) {
+            descendants.add(childId);
+            // Recursively get grandchildren
+            getPageDescendantsRecursive(childId, descendants);
+        }
+    }
+
+    /**
+     * Gets direct child pages of a given page.
+     * 
+     * @param pageId the parent page ID
+     * @return list of child page IDs
+     * @throws IOException if the request fails
+     */
+    private List<String> getChildPages(String pageId) throws IOException {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            URIBuilder uriBuilder = new URIBuilder(config.getBaseUrl() + "/wiki/rest/api/content/" + pageId + "/child/page");
+            uriBuilder.addParameter("limit", "200"); // Confluence default limit
+            
+            HttpGet httpGet = new HttpGet(uriBuilder.build());
+            httpGet.setHeader("Authorization", authHeader);
+            httpGet.setHeader("Accept", "application/json");
+            
+            try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+                
+                if (response.getStatusLine().getStatusCode() != 200) {
+                    throw new IOException("Failed to get child pages for page " + pageId + ": " + response.getStatusLine().getStatusCode());
+                }
+                
+                JsonNode responseJson = objectMapper.readTree(responseBody);
+                List<String> childIds = new ArrayList<>();
+                
+                if (responseJson.has("results")) {
+                    for (JsonNode child : responseJson.get("results")) {
+                        childIds.add(child.get("id").asText());
+                    }
+                }
+                
+                return childIds;
+            }
+        } catch (URISyntaxException e) {
+            throw new IOException("Failed to build child pages URI", e);
+        }
+    }
     
     /**
      * Downloads content from a URL and returns the byte array.

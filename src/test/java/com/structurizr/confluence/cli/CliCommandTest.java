@@ -36,6 +36,7 @@ class CliCommandTest {
         
         // Test default values - note that defaultValue is only applied by Picocli parsing
         assertFalse(exportCommand.cleanSpace, "Default cleanSpace should be false");
+        assertFalse(exportCommand.force, "Default force should be false");
         
         // Test parameter assignment
         exportCommand.confluenceUrl = "https://test.atlassian.net";
@@ -45,6 +46,7 @@ class CliCommandTest {
         exportCommand.workspaceFile = new File("demo/itms-workspace.json");
         exportCommand.branchName = "test-branch";
         exportCommand.cleanSpace = true;
+        exportCommand.force = true;
         
         assertEquals("https://test.atlassian.net", exportCommand.confluenceUrl);
         assertEquals("test@example.com", exportCommand.confluenceUser);
@@ -53,6 +55,7 @@ class CliCommandTest {
         assertTrue(exportCommand.workspaceFile.exists());
         assertEquals("test-branch", exportCommand.branchName);
         assertTrue(exportCommand.cleanSpace);
+        assertTrue(exportCommand.force);
         
         logger.info("✅ Export command parameters working correctly");
     }
@@ -64,18 +67,23 @@ class CliCommandTest {
         
         // Test default values
         assertFalse(cleanCommand.confirmDeletion, "Default confirmDeletion should be false");
+        assertFalse(cleanCommand.force, "Default force should be false");
         
         // Test parameter assignment
         cleanCommand.confluenceUrl = "https://test.atlassian.net";
         cleanCommand.confluenceUser = "test@example.com";
         cleanCommand.confluenceToken = "test-token";
         cleanCommand.confluenceSpaceKey = "TEST";
+        cleanCommand.pageTitle = "Test Page";
+        cleanCommand.force = true;
         cleanCommand.confirmDeletion = true;
         
         assertEquals("https://test.atlassian.net", cleanCommand.confluenceUrl);
         assertEquals("test@example.com", cleanCommand.confluenceUser);
         assertEquals("test-token", cleanCommand.confluenceToken);
         assertEquals("TEST", cleanCommand.confluenceSpaceKey);
+        assertEquals("Test Page", cleanCommand.pageTitle);
+        assertTrue(cleanCommand.force);
         assertTrue(cleanCommand.confirmDeletion);
         
         logger.info("✅ Clean command parameters working correctly");
@@ -138,5 +146,44 @@ class CliCommandTest {
         });
         
         logger.info("✅ All command classes instantiate correctly");
+    }
+
+    @Test
+    void testCleanCommandValidation() {
+        logger.info("=== TEST CLEAN COMMAND NEW FEATURES ===");
+        
+        CleanCommand cleanCommand = new CleanCommand();
+        
+        // Test that page title is required (this will be validated by Picocli at runtime)
+        cleanCommand.pageTitle = "Test Root Page";
+        cleanCommand.force = true; // Should skip confirmation
+        cleanCommand.confluenceUrl = "https://test.atlassian.net";
+        cleanCommand.confluenceUser = "test@example.com";
+        cleanCommand.confluenceToken = "test-token";
+        cleanCommand.confluenceSpaceKey = "TEST";
+        
+        assertNotNull(cleanCommand.pageTitle, "Page title should be set");
+        assertTrue(cleanCommand.force, "Force flag should work");
+        
+        logger.info("✅ Clean command now targets specific pages with force option");
+    }
+
+    @Test
+    void testExportCommandNewFeatures() {
+        logger.info("=== TEST EXPORT COMMAND NEW FEATURES ===");
+        
+        ExportCommand exportCommand = new ExportCommand();
+        
+        // Test new force flag functionality
+        exportCommand.force = true;
+        exportCommand.cleanSpace = true; // This should work with force to skip prompts
+        exportCommand.workspaceFile = new File("demo/itms-workspace.json");
+        exportCommand.branchName = "feature-branch";
+        
+        assertTrue(exportCommand.force, "Force flag should be available");
+        assertTrue(exportCommand.cleanSpace, "Clean should still work");
+        assertEquals("feature-branch", exportCommand.branchName, "Branch name determines target page");
+        
+        logger.info("✅ Export command now has force flag and targeted cleaning");
     }
 }
