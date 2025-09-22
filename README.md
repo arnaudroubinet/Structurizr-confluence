@@ -51,28 +51,31 @@ java -jar structurizr-confluence-1.0.0.jar --help
 
 ### Commands
 
-#### Export Workspace from File
+#### Export Workspace
 
-Export a Structurizr workspace JSON file to Confluence:
+Export a Structurizr workspace from either a local JSON file or Structurizr on-premise to Confluence:
 
 ```bash
-# Using native executable
+# Using native executable with local workspace file
 ./structurizr-confluence-linux export \
   --confluence-url https://yourcompany.atlassian.net \
   --confluence-user your-email@company.com \
   --confluence-token your-api-token \
   --confluence-space SPACE \
-  --workspace path/to/workspace.json \
+  --workspace-file path/to/workspace.json \
   --branch main \
   --clean
 
-# Using JAR
+# Using JAR with Structurizr on-premise
 java -jar structurizr-confluence-1.0.0.jar export \
   --confluence-url https://yourcompany.atlassian.net \
   --confluence-user your-email@company.com \
   --confluence-token your-api-token \
   --confluence-space SPACE \
-  --workspace path/to/workspace.json \
+  --structurizr-url https://structurizr.company.com \
+  --structurizr-key your-api-key \
+  --structurizr-secret your-api-secret \
+  --structurizr-workspace-id 12345 \
   --branch main \
   --clean
 
@@ -82,7 +85,7 @@ java -jar structurizr-confluence-1.0.0.jar export \
   --confluence-user your-email@company.com \
   --confluence-token your-api-token \
   --confluence-space SPACE \
-  --workspace path/to/workspace.json \
+  --workspace-file path/to/workspace.json \
   --branch main \
   --clean \
   --force
@@ -93,7 +96,7 @@ java -jar structurizr-confluence-1.0.0.jar export \
   --confluence-user your-email@company.com \
   --confluence-token your-api-token \
   --confluence-space SPACE \
-  --workspace path/to/workspace.json \
+  --workspace-file path/to/workspace.json \
   --branch main \
   --clean \
   --page-title "Custom Target Page"
@@ -103,18 +106,34 @@ java -jar structurizr-confluence-1.0.0.jar export \
   --confluence-url https://yourcompany.atlassian.net \
   --confluence-user your-email@company.com \
   --confluence-token your-api-token \
-  --workspace path/to/workspace.json \
+  --workspace-file path/to/workspace.json \
   --branch main \
   --clean \
   --page-id "123456"
+
+# Using environment variables for credentials
+export CONFLUENCE_URL="https://yourcompany.atlassian.net"
+export CONFLUENCE_USER="your-email@company.com"
+export CONFLUENCE_TOKEN="your-api-token"
+export CONFLUENCE_SPACE_KEY="SPACE"
+export STRUCTURIZR_URL="https://structurizr.company.com"
+export STRUCTURIZR_API_KEY="your-api-key"
+export STRUCTURIZR_API_SECRET="your-api-secret"
+export STRUCTURIZR_WORKSPACE_ID="12345"
+
+./structurizr-confluence-linux export --workspace-file workspace.json --branch main --clean
 ```
 
-Options:
-- `-u, --confluence-url`: Confluence base URL
-- `-e, --confluence-user`: Confluence user email
-- `-t, --confluence-token`: Confluence API token  
-- `-s, --confluence-space`: Confluence space key (required when using --page-title)
-- `-w, --workspace`: Path to Structurizr workspace JSON file
+**Export Options:**
+- `-u, --confluence-url`: Confluence base URL (default: `CONFLUENCE_URL` env var)
+- `-e, --confluence-user`: Confluence user email (default: `CONFLUENCE_USER` env var)
+- `-t, --confluence-token`: Confluence API token (default: `CONFLUENCE_TOKEN` env var)
+- `-s, --confluence-space`: Confluence space key (default: `CONFLUENCE_SPACE_KEY` env var, required when using --page-title)
+- `-w, --workspace-file`: Path to Structurizr workspace JSON file (takes priority over Structurizr options)
+- `--structurizr-url`: Structurizr on-premise URL (default: `STRUCTURIZR_URL` env var)
+- `--structurizr-key`: Structurizr API key (default: `STRUCTURIZR_API_KEY` env var)
+- `--structurizr-secret`: Structurizr API secret (default: `STRUCTURIZR_API_SECRET` env var)
+- `--structurizr-workspace-id`: Structurizr workspace ID (default: `STRUCTURIZR_WORKSPACE_ID` env var)
 - `-b, --branch`: Branch name for versioning (default: main)
 - `--clean`: Clean target page tree before export
 - `--page-title`: Target page title for cleaning (overrides branch-based target)
@@ -193,18 +212,53 @@ java -jar structurizr-confluence-1.0.0.jar load \
 
 ### Environment Variables
 
-You can use environment variables instead of command-line options:
+You can use environment variables instead of command-line options for all CLI commands. The CLI will automatically detect and use these variables, logging which ones are being used (without showing the actual values for security):
 
+**Confluence Variables:**
 ```bash
 export CONFLUENCE_URL="https://yourcompany.atlassian.net"
 export CONFLUENCE_USER="your-email@company.com"
 export CONFLUENCE_TOKEN="your-api-token"
 export CONFLUENCE_SPACE_KEY="SPACE"
+```
 
-# Then use without specifying credentials (works with both JAR and native)
-./structurizr-confluence-linux export --workspace workspace.json
-# or
-java -jar structurizr-confluence-1.0.0.jar export --workspace workspace.json
+**Structurizr Variables (for export from on-premise):**
+```bash
+export STRUCTURIZR_URL="https://structurizr.company.com"
+export STRUCTURIZR_API_KEY="your-api-key"
+export STRUCTURIZR_API_SECRET="your-api-secret"
+export STRUCTURIZR_WORKSPACE_ID="12345"
+```
+
+**Example Usage with Environment Variables:**
+```bash
+# Set all variables
+export CONFLUENCE_URL="https://yourcompany.atlassian.net"
+export CONFLUENCE_USER="your-email@company.com"
+export CONFLUENCE_TOKEN="your-api-token"
+export CONFLUENCE_SPACE_KEY="SPACE"
+
+# Export from local file (minimal command)
+./structurizr-confluence-linux export --workspace-file workspace.json
+
+# Export from Structurizr on-premise (minimal command)
+export STRUCTURIZR_URL="https://structurizr.company.com"
+export STRUCTURIZR_API_KEY="your-api-key"
+export STRUCTURIZR_API_SECRET="your-api-secret"
+export STRUCTURIZR_WORKSPACE_ID="12345"
+
+./structurizr-confluence-linux export --branch feature-branch --clean
+
+# Clean specific page using environment variables
+./structurizr-confluence-linux clean --page-title "Page Name"
+```
+
+The CLI will output log messages like:
+```
+INFO Using CONFLUENCE_URL environment variable
+INFO Using CONFLUENCE_USER environment variable
+INFO Using CONFLUENCE_TOKEN environment variable
+INFO Using STRUCTURIZR_URL environment variable
 ```
 
 ## Building from Source 🔨

@@ -3,6 +3,7 @@ package com.structurizr.confluence.cli;
 import com.structurizr.Workspace;
 import com.structurizr.confluence.ConfluenceExporter;
 import com.structurizr.confluence.client.ConfluenceConfig;
+import com.structurizr.confluence.client.StructurizrConfig;
 import com.structurizr.util.WorkspaceUtils;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
@@ -26,40 +27,71 @@ import java.nio.file.Path;
 public class ExportCommand implements Runnable {
     private static final Logger logger = LoggerFactory.getLogger(ExportCommand.class);
 
+    // Confluence options
     @CommandLine.Option(
         names = {"-u", "--confluence-url"}, 
-        description = "Confluence base URL (e.g., https://yourcompany.atlassian.net)",
-        required = true
+        description = "Confluence base URL (default: CONFLUENCE_URL env var)",
+        required = false
     )
     String confluenceUrl;
 
     @CommandLine.Option(
         names = {"-e", "--confluence-user"}, 
-        description = "Confluence user email",
-        required = true
+        description = "Confluence user email (default: CONFLUENCE_USER env var)",
+        required = false
     )
     String confluenceUser;
 
     @CommandLine.Option(
         names = {"-t", "--confluence-token"}, 
-        description = "Confluence API token",
-        required = true
+        description = "Confluence API token (default: CONFLUENCE_TOKEN env var)",
+        required = false
     )
     String confluenceToken;
 
     @CommandLine.Option(
         names = {"-s", "--confluence-space"}, 
-        description = "Confluence space key (required when using --page-title)",
+        description = "Confluence space key (default: CONFLUENCE_SPACE_KEY env var, required when using --page-title)",
         required = false
     )
     String confluenceSpaceKey;
 
+    // Workspace source options (mutually exclusive)
     @CommandLine.Option(
-        names = {"-w", "--workspace"}, 
-        description = "Path to Structurizr workspace JSON file",
-        required = true
+        names = {"-w", "--workspace-file"}, 
+        description = "Path to Structurizr workspace JSON file (takes priority over Structurizr options)",
+        required = false
     )
     File workspaceFile;
+
+    // Structurizr on-premise options
+    @CommandLine.Option(
+        names = {"--structurizr-url"}, 
+        description = "Structurizr on-premise URL (default: STRUCTURIZR_URL env var)",
+        required = false
+    )
+    String structurizrUrl;
+
+    @CommandLine.Option(
+        names = {"--structurizr-key"}, 
+        description = "Structurizr API key (default: STRUCTURIZR_API_KEY env var)",
+        required = false
+    )
+    String structurizrApiKey;
+
+    @CommandLine.Option(
+        names = {"--structurizr-secret"}, 
+        description = "Structurizr API secret (default: STRUCTURIZR_API_SECRET env var)",
+        required = false
+    )
+    String structurizrApiSecret;
+
+    @CommandLine.Option(
+        names = {"--structurizr-workspace-id"}, 
+        description = "Structurizr workspace ID (default: STRUCTURIZR_WORKSPACE_ID env var)",
+        required = false
+    )
+    Long structurizrWorkspaceId;
 
     @CommandLine.Option(
         names = {"-b", "--branch"}, 
@@ -99,7 +131,16 @@ public class ExportCommand implements Runnable {
     @Override
     public void run() {
         try {
-            // Validate parameters
+            // Load configuration from environment variables if not provided
+            loadConfigurationFromEnvironment();
+            
+            // Validate configuration
+            if (!validateConfiguration()) {
+                System.exit(1);
+                return;
+            }
+
+            // Validate page targeting parameters
             if (cleanPageTitle != null && cleanPageId != null) {
                 System.err.println("❌ Error: Cannot specify both --page-title and --page-id");
                 System.exit(1);
@@ -111,37 +152,41 @@ public class ExportCommand implements Runnable {
                 System.exit(1);
                 return;
             }
-            
-            // Space is still required for normal export operations
-            if (confluenceSpaceKey == null && cleanPageId == null) {
-                System.err.println("❌ Error: --confluence-space is required (except when using --page-id for cleaning only)");
-                System.exit(1);
-                return;
-            }
 
             logger.info("Starting Structurizr workspace export to Confluence...");
-            logger.info("Workspace file: {}", workspaceFile.getAbsolutePath());
-            logger.info("Confluence URL: {}", confluenceUrl);
-            if (confluenceSpaceKey != null) {
-                logger.info("Confluence space: {}", confluenceSpaceKey);
-            }
-            logger.info("Branch: {}", branchName);
+            logConfiguration();
 
             // Create Confluence configuration
-            ConfluenceConfig config = new ConfluenceConfig(confluenceUrl, confluenceUser, confluenceToken, confluenceSpaceKey);
+            ConfluenceConfig confluenceConfig = new ConfluenceConfig(confluenceUrl, confluenceUser, confluenceToken, confluenceSpaceKey);
 
-            // Create exporter
-            ConfluenceExporter exporter = new ConfluenceExporter(config);
+            // Create exporter based on workspace source
+            ConfluenceExporter exporter;
+            Workspace workspace = null;
 
-            // Load workspace from file
-            logger.info("Loading workspace from: {}", workspaceFile.getAbsolutePath());
-            Workspace workspace = WorkspaceUtils.loadWorkspaceFromJson(workspaceFile);
-            if (workspace == null) {
-                logger.error("Failed to load workspace from file: {}", workspaceFile);
-                System.exit(1);
-                return;
+            if (workspaceFile != null) {
+                // Load workspace from file
+                logger.info("Loading workspace from file: {}", workspaceFile.getAbsolutePath());
+                workspace = WorkspaceUtils.loadWorkspaceFromJson(workspaceFile);
+                if (workspace == null) {
+                    logger.error("Failed to load workspace from file: {}", workspaceFile);
+                    System.exit(1);
+                    return;
+                }
+                logger.info("Workspace loaded successfully: {}", workspace.getName());
+                exporter = new ConfluenceExporter(confluenceConfig);
+            } else {
+                // Load workspace from Structurizr on-premise
+                logger.info("Loading workspace from Structurizr on-premise: {}", structurizrUrl);
+                logger.info("Workspace ID: {}", structurizrWorkspaceId);
+                
+                StructurizrConfig structurizrConfig = new StructurizrConfig(
+                    structurizrUrl, 
+                    structurizrApiKey, 
+                    structurizrApiSecret, 
+                    structurizrWorkspaceId
+                );
+                exporter = new ConfluenceExporter(confluenceConfig, structurizrConfig);
             }
-            logger.info("Workspace loaded successfully: {}", workspace.getName());
 
             // Clean target page tree if requested
             if (cleanSpace) {
@@ -169,7 +214,11 @@ public class ExportCommand implements Runnable {
 
             // Export workspace
             logger.info("Starting workspace export...");
-            exporter.export(workspace, branchName);
+            if (workspace != null) {
+                exporter.export(workspace, branchName);
+            } else {
+                exporter.exportFromStructurizr();
+            }
             logger.info("Export completed successfully!");
 
             System.out.println("✅ Workspace exported successfully to Confluence!");
@@ -179,6 +228,138 @@ public class ExportCommand implements Runnable {
             System.err.println("❌ Export failed: " + e.getMessage());
             System.exit(1);
         }
+    }
+
+    private void loadConfigurationFromEnvironment() {
+        // Load Confluence configuration from environment variables
+        if (confluenceUrl == null) {
+            confluenceUrl = System.getenv("CONFLUENCE_URL");
+            if (confluenceUrl != null) {
+                logger.info("Using CONFLUENCE_URL environment variable");
+            }
+        }
+        
+        if (confluenceUser == null) {
+            confluenceUser = System.getenv("CONFLUENCE_USER");
+            if (confluenceUser != null) {
+                logger.info("Using CONFLUENCE_USER environment variable");
+            }
+        }
+        
+        if (confluenceToken == null) {
+            confluenceToken = System.getenv("CONFLUENCE_TOKEN");
+            if (confluenceToken != null) {
+                logger.info("Using CONFLUENCE_TOKEN environment variable");
+            }
+        }
+        
+        if (confluenceSpaceKey == null) {
+            confluenceSpaceKey = System.getenv("CONFLUENCE_SPACE_KEY");
+            if (confluenceSpaceKey != null) {
+                logger.info("Using CONFLUENCE_SPACE_KEY environment variable");
+            }
+        }
+
+        // Load Structurizr configuration from environment variables (only if no workspace file provided)
+        if (workspaceFile == null) {
+            if (structurizrUrl == null) {
+                structurizrUrl = System.getenv("STRUCTURIZR_URL");
+                if (structurizrUrl != null) {
+                    logger.info("Using STRUCTURIZR_URL environment variable");
+                }
+            }
+            
+            if (structurizrApiKey == null) {
+                structurizrApiKey = System.getenv("STRUCTURIZR_API_KEY");
+                if (structurizrApiKey != null) {
+                    logger.info("Using STRUCTURIZR_API_KEY environment variable");
+                }
+            }
+            
+            if (structurizrApiSecret == null) {
+                structurizrApiSecret = System.getenv("STRUCTURIZR_API_SECRET");
+                if (structurizrApiSecret != null) {
+                    logger.info("Using STRUCTURIZR_API_SECRET environment variable");
+                }
+            }
+            
+            if (structurizrWorkspaceId == null) {
+                String workspaceIdStr = System.getenv("STRUCTURIZR_WORKSPACE_ID");
+                if (workspaceIdStr != null) {
+                    try {
+                        structurizrWorkspaceId = Long.parseLong(workspaceIdStr);
+                        logger.info("Using STRUCTURIZR_WORKSPACE_ID environment variable");
+                    } catch (NumberFormatException e) {
+                        logger.warn("Invalid STRUCTURIZR_WORKSPACE_ID environment variable: {}", workspaceIdStr);
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean validateConfiguration() {
+        // Validate Confluence configuration
+        if (confluenceUrl == null || confluenceUrl.trim().isEmpty()) {
+            System.err.println("❌ Error: --confluence-url is required (or set CONFLUENCE_URL environment variable)");
+            return false;
+        }
+        
+        if (confluenceUser == null || confluenceUser.trim().isEmpty()) {
+            System.err.println("❌ Error: --confluence-user is required (or set CONFLUENCE_USER environment variable)");
+            return false;
+        }
+        
+        if (confluenceToken == null || confluenceToken.trim().isEmpty()) {
+            System.err.println("❌ Error: --confluence-token is required (or set CONFLUENCE_TOKEN environment variable)");
+            return false;
+        }
+
+        // Validate workspace source
+        if (workspaceFile == null) {
+            // Using Structurizr on-premise, validate those parameters
+            if (structurizrUrl == null || structurizrUrl.trim().isEmpty()) {
+                System.err.println("❌ Error: --structurizr-url is required when not using --workspace-file (or set STRUCTURIZR_URL environment variable)");
+                return false;
+            }
+            
+            if (structurizrApiKey == null || structurizrApiKey.trim().isEmpty()) {
+                System.err.println("❌ Error: --structurizr-key is required when not using --workspace-file (or set STRUCTURIZR_API_KEY environment variable)");
+                return false;
+            }
+            
+            if (structurizrApiSecret == null || structurizrApiSecret.trim().isEmpty()) {
+                System.err.println("❌ Error: --structurizr-secret is required when not using --workspace-file (or set STRUCTURIZR_API_SECRET environment variable)");
+                return false;
+            }
+            
+            if (structurizrWorkspaceId == null) {
+                System.err.println("❌ Error: --structurizr-workspace-id is required when not using --workspace-file (or set STRUCTURIZR_WORKSPACE_ID environment variable)");
+                return false;
+            }
+        }
+
+        // Space is required for normal export operations unless using page-id for cleaning only
+        if (confluenceSpaceKey == null && cleanPageId == null) {
+            System.err.println("❌ Error: --confluence-space is required (or set CONFLUENCE_SPACE_KEY environment variable, except when using --page-id for cleaning only)");
+            return false;
+        }
+
+        return true;
+    }
+
+    private void logConfiguration() {
+        if (workspaceFile != null) {
+            logger.info("Workspace source: File - {}", workspaceFile.getAbsolutePath());
+        } else {
+            logger.info("Workspace source: Structurizr on-premise - {}", structurizrUrl);
+            logger.info("Structurizr workspace ID: {}", structurizrWorkspaceId);
+        }
+        
+        logger.info("Confluence URL: {}", confluenceUrl);
+        if (confluenceSpaceKey != null) {
+            logger.info("Confluence space: {}", confluenceSpaceKey);
+        }
+        logger.info("Branch: {}", branchName);
     }
 
     private boolean promptForCleanConfirmation(String targetPageTitle, String targetPageId) {

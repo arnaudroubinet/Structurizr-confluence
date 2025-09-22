@@ -239,4 +239,56 @@ class CliCommandTest {
         
         logger.info("✅ Export command supports both page title and page ID targeting");
     }
+
+    @Test
+    void testExportCommandWorkspaceFileSupport() {
+        logger.info("=== TEST EXPORT COMMAND WORKSPACE FILE SUPPORT ===");
+        
+        ExportCommand exportCommand = new ExportCommand();
+        
+        // Test new --workspace-file parameter
+        exportCommand.workspaceFile = new File("demo/itms-workspace.json");
+        exportCommand.confluenceUrl = "https://test.atlassian.net";
+        exportCommand.confluenceUser = "test@example.com";
+        exportCommand.confluenceToken = "test-token";
+        exportCommand.confluenceSpaceKey = "TEST";
+        
+        assertEquals("demo/itms-workspace.json", exportCommand.workspaceFile.getPath());
+        assertTrue(exportCommand.workspaceFile.exists(), "Demo workspace file should exist");
+        
+        // Structurizr parameters should be null when using workspace file
+        assertNull(exportCommand.structurizrUrl);
+        assertNull(exportCommand.structurizrApiKey);
+        assertNull(exportCommand.structurizrApiSecret);
+        assertNull(exportCommand.structurizrWorkspaceId);
+        
+        logger.info("✅ Export command supports --workspace-file parameter");
+    }
+
+    @Test
+    void testExportCommandStructurizrSupport() {
+        logger.info("=== TEST EXPORT COMMAND STRUCTURIZR SUPPORT ===");
+        
+        ExportCommand exportCommand = new ExportCommand();
+        
+        // Test Structurizr on-premise parameters
+        exportCommand.structurizrUrl = "https://structurizr.example.com";
+        exportCommand.structurizrApiKey = "test-api-key";
+        exportCommand.structurizrApiSecret = "test-api-secret";
+        exportCommand.structurizrWorkspaceId = 12345L;
+        exportCommand.confluenceUrl = "https://test.atlassian.net";
+        exportCommand.confluenceUser = "test@example.com";
+        exportCommand.confluenceToken = "test-token";
+        exportCommand.confluenceSpaceKey = "TEST";
+        
+        assertEquals("https://structurizr.example.com", exportCommand.structurizrUrl);
+        assertEquals("test-api-key", exportCommand.structurizrApiKey);
+        assertEquals("test-api-secret", exportCommand.structurizrApiSecret);
+        assertEquals(12345L, exportCommand.structurizrWorkspaceId);
+        
+        // Workspace file should be null when using Structurizr
+        assertNull(exportCommand.workspaceFile);
+        
+        logger.info("✅ Export command supports Structurizr on-premise parameters");
+    }
 }
