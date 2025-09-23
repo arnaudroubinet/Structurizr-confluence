@@ -44,3 +44,6 @@ package-lock.json
 target/diagrams/
 *.png
 *.svg
+
+# Puppeteer downloaded Chrome binaries/cache
+chrome/

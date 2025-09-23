@@ -258,6 +258,19 @@ mvn clean package -Pnative
 mvn test
 ```
 
+### Dev Container Setup
+
+If you open this repository in VS Code Dev Containers, dependencies required for headless Chromium/Puppeteer and GraphViz are installed automatically via `postCreateCommand`:
+
+- Installs Ubuntu packages for Chromium and GraphViz
+- Runs `npm ci` and ensures Puppeteer browser binaries are available
+
+Manual run (outside of Dev Container):
+
+```
+bash scripts/init-dev.sh
+```
+
 **Native Executable Benefits:**
 - ⚡ Fast startup (~0.1s vs ~2s JVM)
 - 💾 Low memory (~50MB vs ~200MB JVM)
