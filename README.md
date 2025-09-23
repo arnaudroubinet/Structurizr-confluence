@@ -234,6 +234,50 @@ INFO Using CONFLUENCE_URL environment variable
 INFO Using CONFLUENCE_TOKEN environment variable
 ```
 
+## Docker: utiliser le CLI + Chrome
+
+Une image Docker contenant le CLI natif, Chrome/Playwright et Graphviz est fournie et publiée sur GHCR.
+
+- Image: `ghcr.io/arnaudroubinet/structurizr-confluence:latest`
+- Contient:
+  - Binaire natif `structurizr-confluence`
+  - Node + Playwright (Chrome) + Graphviz
+  - Scripts utilitaires: `export-diagrams.js`, `export-diagrams.playwright.js`
+
+Exemples d’utilisation:
+
+- Afficher l’aide:
+
+```bash
+docker run --rm ghcr.io/arnaudroubinet/structurizr-confluence:latest --help
+```
+
+- Exporter vers Confluence (variables d’env nécessaires):
+
+```bash
+docker run --rm \
+  -e CONFLUENCE_URL="https://your-domain.atlassian.net" \
+  -e CONFLUENCE_USER="email@example.com" \
+  -e CONFLUENCE_TOKEN="<api-token>" \
+  -v "$PWD":/work \
+  ghcr.io/arnaudroubinet/structurizr-confluence:latest \
+  --workspace /work/demo/itms-workspace.json \
+  --space "Test" \
+  --page-id 10977556
+```
+
+- Exécuter les scripts d’export de diagrammes basés sur Playwright/Puppeteer:
+
+```bash
+# Playwright (Chrome déjà présent dans l’image)
+docker run --rm -v "$PWD":/work -w /opt/cli ghcr.io/arnaudroubinet/structurizr-confluence:latest \
+  node export-diagrams.playwright.js
+
+# Puppeteer (Installe automatiquement Chromium si besoin)
+docker run --rm -v "$PWD":/work -w /opt/cli ghcr.io/arnaudroubinet/structurizr-confluence:latest \
+  node export-diagrams.js
+```
+
 ## Building from Source
 
 ### Prerequisites
