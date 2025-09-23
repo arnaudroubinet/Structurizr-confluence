@@ -5,6 +5,7 @@ import com.structurizr.confluence.client.ConfluenceClient;
 import com.structurizr.confluence.client.ConfluenceConfig;
 import com.structurizr.util.WorkspaceUtils;
 
+import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@QuarkusTest
 public class ConfluenceExporterIntegrationTest {
     private static final Logger logger = LoggerFactory.getLogger(ConfluenceExporterIntegrationTest.class);
     
@@ -31,11 +33,11 @@ public class ConfluenceExporterIntegrationTest {
         Assumptions.assumeTrue(confluenceSpaceKey != null && !confluenceSpaceKey.isBlank(), "CONFLUENCE_SPACE_KEY not defined: test skipped");
         assertNotNull(confluenceSpaceKey, "CONFLUENCE_SPACE_KEY must be defined");
         
-        ConfluenceConfig config = new ConfluenceConfig(confluenceUrl, confluenceUser, confluenceToken, confluenceSpaceKey);
+    ConfluenceConfig config = new ConfluenceConfig(confluenceUrl, confluenceUser, confluenceToken, confluenceSpaceKey);
 
-        // Clean the Confluence space before export
-        ConfluenceExporter exporter = new ConfluenceExporter(config);
-        ConfluenceClient confluenceClient = new ConfluenceClient(config);
+    // Clean the Confluence space before export
+    ConfluenceExporter exporter = new ConfluenceExporter(config);
+    ConfluenceClient confluenceClient = new ConfluenceClient(config);
         
         logger.info("Cleaning Confluence space: {}", confluenceSpaceKey);
         exporter.cleanConfluenceSpace();

@@ -37,5 +37,11 @@
       }
     }
   },
+  "runArgs": [
+    "--cpus=4",
+    "--memory=16g",
+    "--memory-swap=16g",
+    "--shm-size=2g"
+  ],
   "postCreateCommand": "bash scripts/init-dev.sh"
 }
