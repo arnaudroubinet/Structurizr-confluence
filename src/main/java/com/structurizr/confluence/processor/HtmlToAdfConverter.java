@@ -370,7 +370,7 @@ public class HtmlToAdfConverter {
     private Document processTextBlock(Document doc, Element element) {
         // Nouvelle approche : détecter si le contenu a du formatage inline
         if (hasInlineFormatting(element)) {
-            // Utiliser le formatage ADF natif avec marks
+            // Use native ADF formatting with marks
             return processTextBlockWithNativeFormatting(doc, element);
         }
         
@@ -518,7 +518,7 @@ public class HtmlToAdfConverter {
     private Document processNumberedList(Document doc, Element element) {
         Elements listItems = element.select("li");
         if (!listItems.isEmpty()) {
-            // Utiliser orderedList natif ADF au lieu de bulletList avec numéros manuels
+            // Use native ADF orderedList au lieu de bulletList avec numéros manuels
             return doc.orderedList(list -> {
                 for (Element li : listItems) {
                     // Traiter le contenu de l'élément li
@@ -705,7 +705,7 @@ public class HtmlToAdfConverter {
      * Processes a blockquote element with native ADF blockquote.
      */
     private Document processBlockquote(Document doc, Element element) {
-        // Utiliser blockquote natif ADF au lieu de paragraphe avec préfixe
+        // Use native ADF blockquote au lieu de paragraphe avec préfixe
         return doc.quote(quote -> {
             // Traiter récursivement le contenu du blockquote
             for (Element child : element.children()) {
@@ -1051,7 +1051,7 @@ public class HtmlToAdfConverter {
         }
         
         if (!href.isEmpty()) {
-            // Utiliser le lien natif ADF au lieu de texte simple
+            // Use native ADF link au lieu de texte simple
             Text linkText = createNativeLinkText(text, href);
             return doc.paragraph(linkText);
         } else {
@@ -1160,7 +1160,7 @@ public class HtmlToAdfConverter {
      */
     private Document processTextBlockWithNativeFormatting(Document doc, Element element) {
         try {
-            // Créer une liste de nœuds Text avec formatage
+            // Create list of Text nodes with formatting
             List<Text> textNodes = new ArrayList<>();
             
             // Traiter récursivement tous les nœuds enfants
@@ -1221,7 +1221,7 @@ public class HtmlToAdfConverter {
                     // Vérifier si le lien a un href
                     String linkHref = element.attr("href");
                     if (!linkHref.isEmpty()) {
-                        // Utiliser les liens natifs ADF avec marks
+                        // Use native ADF links with marks
                         result.addAll(processLinkElement(element));
                     } else {
                         // Lien sans href - traiter récursivement comme du texte normal
@@ -1387,9 +1387,9 @@ public class HtmlToAdfConverter {
     /**
      * Crée un nœud Text ADF natif avec un mark de type link.
      * 
-     * @param linkText Le texte du lien à afficher
-     * @param href L'URL du lien
-     * @return Un objet Text avec des marks pour créer un lien natif ADF
+     * @param linkText The link text to display
+     * @param href The link URL
+     * @return A Text object with marks to create a native ADF link
      */
     private Text createNativeLinkText(String linkText, String href) {
         try {
@@ -1399,7 +1399,7 @@ public class HtmlToAdfConverter {
             textNode.put("type", "text");
             textNode.put("text", linkText);
             
-            // Créer le mark pour le lien
+            // Create mark for the link
             ArrayNode marks = mapper.createArrayNode();
             ObjectNode linkMark = mapper.createObjectNode();
             linkMark.put("type", "link");
@@ -1411,10 +1411,10 @@ public class HtmlToAdfConverter {
             marks.add(linkMark);
             textNode.set("marks", marks);
             
-            // Utiliser Jackson pour créer l'objet Text à partir du JSON
+            // Use Jackson to create Text object à partir du JSON
             return mapper.treeToValue(textNode, Text.class);
         } catch (Exception e) {
-            logger.warn("Impossible de créer un lien natif ADF, utilisation du fallback: {}", e.getMessage());
+            logger.warn("Unable to create native ADF link, using fallback: {}", e.getMessage());
             // Fallback vers l'ancien format en cas d'erreur
             return Text.of(linkText + " (" + href + ")");
         }
@@ -1423,9 +1423,9 @@ public class HtmlToAdfConverter {
     /**
      * Crée un objet Text avec un mark de formatage natif ADF (underline, strike).
      * 
-     * @param text Le texte à formater
-     * @param markType Le type de mark ("underline", "strike")
-     * @return Un objet Text avec des marks pour créer un formatage natif ADF
+     * @param text The text to format
+     * @param markType The mark type ("underline", "strike")
+     * @return A Text object with marks to create native ADF formatting
      */
     private Text createNativeFormattedText(String text, String markType) {
         try {
@@ -1443,7 +1443,7 @@ public class HtmlToAdfConverter {
             marks.add(formatMark);
             textNode.set("marks", marks);
             
-            // Utiliser Jackson pour créer l'objet Text à partir du JSON
+            // Use Jackson to create Text object à partir du JSON
             return mapper.treeToValue(textNode, Text.class);
         } catch (Exception e) {
             logger.warn("Impossible de créer un formatage natif ADF {}, utilisation du fallback: {}", markType, e.getMessage());

@@ -1,367 +1,356 @@
-# Structurizr Confluence Exporter
+# Structurizr Confluence CLI
 
-A Java library that exports [Structurizr](https://structurizr.com/) workspace documentation and ADRs to Confluence Cloud in Atlassian Document Format (ADF). Can load workspaces from Structurizr on-premise instances or work with provided workspace objects.
+A high-performance command-line tool that exports [Structurizr](https://structurizr.com/) workspace documentation and Architecture Decision Records (ADRs) to Confluence Cloud.
 
 ## Features
 
-- Exports Structurizr workspace documentation to Confluence Cloud
-- **Exports Architecture Decision Records (ADRs)** from Structurizr workspaces
-- **Loads workspaces from Structurizr on-premise instances** using the official Structurizr client
-- Generates documentation in Atlassian Document Format (ADF) using official library
-- Creates structured pages with table of contents
-- Supports all Structurizr model elements (People, Software Systems, Containers, Components)
-- Supports all Structurizr view types (System Landscape, System Context, Container, Component, Deployment)
-- Automatically creates or updates pages in Confluence
+- **⚡ Native Linux Executable** - Fast startup (~0.1s) with low memory footprint (~50MB)
+- **🔗 Dual Workspace Sources** - Export from local JSON files or Structurizr on-premise
+- **🎯 Targeted Operations** - Clean specific pages by title or ID, not entire spaces
+- **🔒 Safety Features** - Interactive confirmation prompts with force override for automation
+- **🌍 Environment Variables** - Comprehensive support for secure credential management
+- **📄 Rich Documentation** - Exports workspace docs, model elements, views, and ADRs
+- **🏗️ ADF Format** - Native Atlassian Document Format for perfect Confluence integration
 
-## Requirements
+## Quick Start
 
-- Java 11 or higher
-- Confluence Cloud instance
-- Confluence API token
-- (Optional) Structurizr on-premise instance with API access
+### Download & Install
 
-## Installation
+```bash
+# Download native executable (no Java required)
+wget https://github.com/arnaudroubinet/Structurizr-confluence/releases/latest/download/structurizr-confluence-linux.tar.gz
+tar -xzf structurizr-confluence-linux.tar.gz
+chmod +x structurizr-confluence-linux
 
-Add the dependency to your Maven project:
-
-```xml
-<dependency>
-    <groupId>com.structurizr</groupId>
-    <artifactId>structurizr-confluence</artifactId>
-    <version>1.0.0</version>
-</dependency>
+# Verify installation
+./structurizr-confluence-linux --help
 ```
-
-## Usage
 
 ### Basic Usage
 
-```java
-import com.structurizr.Workspace;
-import com.structurizr.confluence.ConfluenceExporter;
-import com.structurizr.confluence.client.ConfluenceConfig;
+```bash
+# Export workspace from local file
+./structurizr-confluence-linux export \
+  --confluence-url https://company.atlassian.net \
+  --confluence-user user@company.com \
+  --confluence-token api-token \
+  --confluence-space MYSPACE \
+  --workspace-file workspace.json
 
-// Create your Structurizr workspace
-Workspace workspace = new Workspace("My Architecture", "Description of my software architecture");
-// ... populate your workspace with model elements and views
-
-// Configure Confluence connection
-ConfluenceConfig config = new ConfluenceConfig(
-    "https://your-domain.atlassian.net", // Confluence base URL
-    "your-email@example.com",            // Your email
-    "your-api-token",                    // Your API token
-    "SPACE"                              // Space key where pages will be created
-);
-
-// Export to Confluence
-ConfluenceExporter exporter = new ConfluenceExporter(config);
-try {
-    exporter.export(workspace);
-    System.out.println("Workspace exported successfully to Confluence!");
-} catch (Exception e) {
-    System.err.println("Export failed: " + e.getMessage());
-}
+# Export from Structurizr on-premise
+./structurizr-confluence-linux export \
+  --structurizr-url https://structurizr.company.com \
+  --structurizr-workspace-id 12345 \
+  --structurizr-api-key key \
+  --structurizr-api-secret secret \
+  --confluence-url https://company.atlassian.net \
+  --confluence-user user@company.com \
+  --confluence-token api-token \
+  --confluence-space MYSPACE
 ```
 
-### Loading from Structurizr On-Premise
+## Commands
 
-## Règle de titre des pages Confluence
+### Export Workspace
 
-Le titre final des pages et des entrées de sommaire (TOC) est déterminé par la règle suivante :
+Export documentation and ADRs from a Structurizr workspace to Confluence.
 
-- Utiliser le premier `h1` présent dans le contenu converti en HTML
-- Si aucun `h1` valide n’est trouvé, utiliser le nom de fichier de la section
-- Le titre défini dans la section du workspace Structurizr est ignoré
-
-Notes :
-
-- Un `h1` vide ou ne contenant que des espaces est considéré comme non valide et déclenche le fallback au nom de fichier
-- Le `h1` utilisé comme titre de page est retiré du corps de la page afin d’éviter la duplication
-- Cette politique s’applique autant à la génération du sommaire (TOC) qu’à la création/mise à jour des pages
-
-```java
-import com.structurizr.confluence.ConfluenceExporter;
-import com.structurizr.confluence.client.ConfluenceConfig;
-import com.structurizr.confluence.client.StructurizrConfig;
-
-// Configure Structurizr on-premise connection
-StructurizrConfig structurizrConfig = new StructurizrConfig(
-    "https://your-structurizr-instance.com",  // On-premise Structurizr URL
-    "your-api-key",                           // Your API key
-    "your-api-secret",                        // Your API secret
-    12345L                                    // Workspace ID to load
-);
-
-// Configure Confluence connection
-ConfluenceConfig confluenceConfig = new ConfluenceConfig(
-    "https://your-domain.atlassian.net",     // Confluence base URL
-    "your-email@example.com",                // Your email
-    "your-api-token",                        // Your API token
-    "SPACE"                                  // Space key
-);
-
-// Export workspace (including documentation and ADRs) from Structurizr to Confluence
-ConfluenceExporter exporter = new ConfluenceExporter(confluenceConfig, structurizrConfig);
-try {
-    exporter.exportFromStructurizr();
-    System.out.println("Workspace and ADRs exported successfully!");
-} catch (Exception e) {
-    System.err.println("Export failed: " + e.getMessage());
-}
-```
-
-### Getting Confluence API Token
-
-1. Go to your Atlassian account settings
-2. Navigate to Security → Create and manage API tokens
-3. Create a new API token
-4. Use your email and the API token for authentication
-
-### Generated Documentation Structure
-
-The exporter creates the following page structure in Confluence:
-
-```
-📄 [Workspace Name] - Architecture Documentation (main page)
-├── 📄 System Landscape Views
-├── 📄 System Context Views  
-├── 📄 Container Views
-├── 📄 Component Views
-├── 📄 Deployment Views
-├── 📄 Model Documentation
-└── 📄 Architecture Decision Records (if ADRs exist)
-    ├── 📄 ADR 001 - [Decision Title]
-    ├── 📄 ADR 002 - [Decision Title]
-    └── 📄 ...
-```
-
-Each page contains:
-- Structured content in ADF format
-- Table of contents
-- View descriptions and metadata
-- Model element documentation with properties
-- **ADR pages with decision metadata and links** (when available)
-
-## ADF (Atlassian Document Format)
-
-This library uses Atlassian's official ADF builder library (`com.atlassian.stride:adf-builder`) to generate documentation in ADF, which is the native format used by Confluence Cloud. ADF provides:
-
-- Rich text formatting
-- Structured content (headings, paragraphs, lists)
-- Code blocks and inline code
-- Links and references
-
-## Building and Testing
-
-### Prerequisites
-
-- Java 11 or higher
-- Maven 3.6 or higher
-- Internet connection for downloading dependencies
-
-### Build Instructions
-
-1. **Clean and compile the project:**
-   ```bash
-   mvn clean compile
-   ```
-
-2. **Run all unit tests (no network required):**
-   ```bash
-   mvn test -Dtest=AdfIntegrationTest
-   ```
-
-3. **Build the JAR file:**
-   ```bash
-   mvn package
-   ```
-
-### Testing Strategy
-
-The project includes multiple levels of testing:
-
-#### Unit Tests (Always Green ✅)
-These tests validate ADF document generation and basic functionality without requiring network access:
+**Source Options (choose one):**
+- `--workspace-file` - Export from local JSON file
+- `--structurizr-*` options - Export from Structurizr on-premise
 
 ```bash
-# Run ADF unit tests
-mvn test -Dtest=AdfIntegrationTest
+# Export from local file
+./structurizr-confluence-linux export \
+  --workspace-file workspace.json \
+  --confluence-url https://company.atlassian.net \
+  --confluence-user user@company.com \
+  --confluence-token token \
+  --confluence-space MYSPACE
 
-# Expected output: BUILD SUCCESS with 2 tests passed
+# Export from Structurizr on-premise
+./structurizr-confluence-linux export \
+  --structurizr-url https://structurizr.company.com \
+  --structurizr-workspace-id 12345 \
+  --structurizr-api-key key \
+  --structurizr-api-secret secret \
+  --confluence-url https://company.atlassian.net \
+  --confluence-user user@company.com \
+  --confluence-token token \
+  --confluence-space MYSPACE
+
+# Clean existing pages before export
+./structurizr-confluence-linux export \
+  --workspace-file workspace.json \
+  --confluence-space MYSPACE \
+  --clean
+
+# Target specific page for cleaning
+./structurizr-confluence-linux export \
+  --workspace-file workspace.json \
+  --clean \
+  --page-title "Architecture Documentation"
+
+# Force operation (no confirmation)
+./structurizr-confluence-linux export \
+  --workspace-file workspace.json \
+  --clean \
+  --force
 ```
 
-#### Integration Tests (Require Credentials)
-These tests validate real Confluence integration and require environment variables:
+**Options:**
+- `--workspace-file` - Path to workspace JSON file
+- `--structurizr-url` - Structurizr on-premise URL  
+- `--structurizr-workspace-id` - Workspace ID to load
+- `--structurizr-api-key` - Structurizr API key
+- `--structurizr-api-secret` - Structurizr API secret
+- `--confluence-url` - Confluence base URL
+- `--confluence-user` - User email
+- `--confluence-token` - API token
+- `--confluence-space` - Space key (required for page titles)
+- `--branch` - Branch name for page naming (default: main)
+- `--clean` - Clean target pages before export
+- `--page-title` - Target specific page by title
+- `--page-id` - Target specific page by ID
+- `--force` - Skip confirmation prompts
 
+### Clean Pages
+
+Remove a page and all its subpages from Confluence.
+
+```bash
+# Clean by page title (requires space)
+./structurizr-confluence-linux clean \
+  --confluence-url https://company.atlassian.net \
+  --confluence-user user@company.com \
+  --confluence-token token \
+  --confluence-space MYSPACE \
+  --page-title "Old Documentation"
+
+# Clean by page ID (globally unique)
+./structurizr-confluence-linux clean \
+  --confluence-url https://company.atlassian.net \
+  --confluence-user user@company.com \
+  --confluence-token token \
+  --page-id "123456"
+
+# Force deletion without confirmation
+./structurizr-confluence-linux clean \
+  --page-title "Old Documentation" \
+  --confluence-space MYSPACE \
+  --force
+```
+
+⚠️ **Warning**: Deletes the target page and ALL subpages. Prompts for confirmation unless `--force` is used.
+
+### Load from Structurizr
+
+Load workspace from Structurizr on-premise and export to Confluence in one step.
+
+```bash
+./structurizr-confluence-linux load \
+  --structurizr-url https://structurizr.company.com \
+  --structurizr-key key \
+  --structurizr-secret secret \
+  --workspace-id 12345 \
+  --confluence-url https://company.atlassian.net \
+  --confluence-user user@company.com \
+  --confluence-token token \
+  --confluence-space MYSPACE
+java -jar structurizr-confluence-1.0.0.jar load \
+  --structurizr-url https://structurizr.yourcompany.com \
+  --structurizr-key your-api-key \
+  --structurizr-secret your-api-secret \
+  --workspace-id 12345 \
+  --confluence-url https://yourcompany.atlassian.net \
+  --confluence-user your-email@company.com \
+  --confluence-token your-api-token \
+  --confluence-space SPACE \
+  --clean
+```
+
+### Environment Variables
+
+You can use environment variables instead of command-line options for all CLI commands. The CLI will automatically detect and use these variables, logging which ones are being used (without showing the actual values for security):
+
+**Confluence Variables:**
+```bash
+export CONFLUENCE_URL="https://yourcompany.atlassian.net"
+export CONFLUENCE_USER="your-email@company.com"
+export CONFLUENCE_TOKEN="your-api-token"
+export CONFLUENCE_SPACE_KEY="SPACE"
+```
+
+**Structurizr Variables (for export from on-premise):**
+```bash
+export STRUCTURIZR_URL="https://structurizr.company.com"
+export STRUCTURIZR_API_KEY="your-api-key"
+export STRUCTURIZR_API_SECRET="your-api-secret"
+export STRUCTURIZR_WORKSPACE_ID="12345"
+```
+
+**Example Usage with Environment Variables:**
+```bash
+# Set all variables
+export CONFLUENCE_URL="https://yourcompany.atlassian.net"
+export CONFLUENCE_USER="your-email@company.com"
+export CONFLUENCE_TOKEN="your-api-token"
+export CONFLUENCE_SPACE_KEY="SPACE"
+
+```
+
+## Environment Variables
+
+The CLI supports environment variables for all configuration options. This is ideal for CI/CD and secure deployments.
+
+**Confluence Settings:**
+- `CONFLUENCE_URL` - Confluence base URL
+- `CONFLUENCE_USER` - User email
+- `CONFLUENCE_TOKEN` - API token
+- `CONFLUENCE_SPACE_KEY` - Space key
+
+**Structurizr Settings:**
+- `STRUCTURIZR_URL` - Structurizr on-premise URL
+- `STRUCTURIZR_API_KEY` - API key
+- `STRUCTURIZR_API_SECRET` - API secret
+- `STRUCTURIZR_WORKSPACE_ID` - Workspace ID
+
+**Usage Example:**
 ```bash
 # Set environment variables
-export CONFLUENCE_USER="your-email@example.com"
-export CONFLUENCE_TOKEN="your-confluence-api-token"
+export CONFLUENCE_URL="https://company.atlassian.net"
+export CONFLUENCE_USER="user@company.com"
+export CONFLUENCE_TOKEN="token"
+export CONFLUENCE_SPACE_KEY="MYSPACE"
 
-# Run all integration tests
-mvn test -Dtest=ConfluenceIntegrationTest
-
-# Run specific page update test
-mvn test -Dtest=ConfluenceIntegrationTest#shouldUpdateSpecificConfluencePage
+# Minimal commands using environment variables
+./structurizr-confluence-linux export --workspace-file workspace.json
+./structurizr-confluence-linux clean --page-title "Old Docs"
 ```
 
-#### Test Execution Rules
-
-**✅ MANDATORY**: All tests must be green (passing) before submitting PRs:
-
-1. **Always run unit tests first:**
-   ```bash
-   mvn clean compile test -Dtest=AdfIntegrationTest
-   ```
-   - These must pass with BUILD SUCCESS
-   - No network dependencies
-   - Validates ADF document generation
-
-2. **Run integration tests with credentials:**
-   ```bash
-   export CONFLUENCE_USER="your-email@example.com"
-   export CONFLUENCE_TOKEN="your-confluence-api-token"
-   mvn test -Dtest=ConfluenceIntegrationTest
-   ```
-   - Requires valid Confluence credentials
-   - Tests real page creation/updates
-   - Validates end-to-end functionality
-
-3. **Verify specific page update:**
-   ```bash
-   mvn test -Dtest=ConfluenceIntegrationTest#shouldUpdateSpecificConfluencePage
-   ```
-   - Updates page ID 10977556 specifically
-   - **SCREENSHOT REQUIRED**: Must include screenshot of updated Confluence page
-
-### Test Status After Whitelist Update
-
-✅ **Connectivity Working**: The whitelist has been successfully added and the tests can now connect to `arnaudroubinet.atlassian.net`
-
-✅ **Error Handling Improved**: Better error messages for authentication failures and missing JSON fields
-
-✅ **Test Infrastructure Ready**: All tests are ready to run with valid credentials
-
-**Current Test Results:**
-
-**Unit Tests**: ✅ PASSING (2/2 tests)
-```bash
-mvn test -Dtest=AdfIntegrationTest
-# Result: BUILD SUCCESS
+The CLI shows which environment variables are used without exposing sensitive values:
+```
+INFO Using CONFLUENCE_URL environment variable
+INFO Using CONFLUENCE_TOKEN environment variable
 ```
 
-**Integration Tests**: 🔐 Requires valid credentials
-```bash
-export CONFLUENCE_USER="test@example.com"
-export CONFLUENCE_TOKEN="dummy"
-mvn test -Dtest=ConfluenceIntegrationTest#shouldUpdateSpecificConfluencePage
-# Result: 403 - "Current user not permitted to use Confluence" (expected with dummy credentials)
-```
+## Docker: utiliser le CLI + Chrome
 
-**Ready for Real Testing**: The integration tests are now properly connecting to Confluence and will work with valid credentials.
+Une image Docker contenant le CLI natif, Chrome/Playwright et Graphviz est fournie et publiée sur GHCR.
 
-### Screenshot Requirements
+- Image: `ghcr.io/arnaudroubinet/structurizr-confluence:latest`
+- Contient:
+  - Binaire natif `structurizr-confluence`
+  - Node + Playwright (Chrome) + Graphviz
+  - Scripts utilitaires: `export-diagrams.js`, `export-diagrams.playwright.js`
 
-**⚠️ MANDATORY FOR PR VALIDATION**: 
+Exemples d’utilisation:
 
-When running the integration tests, you must provide a screenshot of the updated Confluence page as proof of successful execution. The screenshot should show:
-
-1. **Page Title**: "Structurizr Test Page - [Workspace Name]"
-2. **Content**: Updated ADF content with workspace details
-3. **Timestamp**: Showing recent update time
-4. **Page ID**: Visible in URL (10977556)
-
-#### How to Capture Screenshot:
-
-1. Run the specific page update test:
-   ```bash
-   export CONFLUENCE_USER="your-email@example.com"
-   export CONFLUENCE_TOKEN="your-confluence-api-token"
-   mvn test -Dtest=ConfluenceIntegrationTest#shouldUpdateSpecificConfluencePage
-   ```
-
-2. Navigate to: `https://arnaudroubinet.atlassian.net/wiki/spaces/Test/pages/10977556`
-
-3. Capture screenshot showing:
-   - Updated page content
-   - Timestamp of update
-   - Workspace information
-   - Page structure with ADF formatting
-
-4. Include screenshot in PR comments or description
-
-### Continuous Integration
-
-The build process should follow this sequence:
+- Afficher l’aide:
 
 ```bash
-# 1. Clean build
-mvn clean
-
-# 2. Compile
-mvn compile
-
-# 3. Run unit tests (must pass)
-mvn test -Dtest=AdfIntegrationTest
-
-# 4. Package if tests pass
-mvn package
-
-# 5. Run integration tests (with credentials)
-export CONFLUENCE_USER="..." CONFLUENCE_TOKEN="..."
-mvn test -Dtest=ConfluenceIntegrationTest
+docker run --rm ghcr.io/arnaudroubinet/structurizr-confluence:latest --help
 ```
 
-All tests must be **GREEN** ✅ before proceeding to the next step.
-
-## Dependencies
-
-- [Structurizr for Java](https://github.com/structurizr/java) - Core Structurizr library
-- [Atlassian ADF Builder](https://bitbucket.org/atlassian/adf-builder-java) - Official ADF document generation
-- Jackson - JSON processing for ADF serialization
-- Apache HttpClient - HTTP communication with Confluence API
-- SLF4J - Logging
-
-## Testing
-
-Integration tests cover ADF document generation using the official library. The implementation demonstrates proper usage of Atlassian's ADF builder and validates JSON serialization compatibility with Confluence Cloud.
-
-### Running Integration Tests
-
-To run the full integration test that exports to a real Confluence instance:
-
-1. Set environment variables:
-   ```bash
-   export CONFLUENCE_USER="your-email@example.com"
-   export CONFLUENCE_TOKEN="your-confluence-api-token"
-   ```
-
-2. Run the integration test:
-   ```bash
-   mvn test -Dtest=ConfluenceIntegrationTest
-   ```
-
-The integration test will:
-- Create a Financial Risk System workspace based on Structurizr examples
-- Export it to `https://arnaudroubinet.atlassian.net` in the Test space
-- Validate the markdown content from the quality attributes example
-- Verify successful export without errors
-
-### Testing Specific Page Updates
-
-To test updating a specific Confluence page by ID:
+- Exporter vers Confluence (variables d’env nécessaires):
 
 ```bash
-export CONFLUENCE_USER="your-email@example.com"
-export CONFLUENCE_TOKEN="your-confluence-api-token"
-mvn test -Dtest=ConfluenceIntegrationTest#shouldUpdateSpecificConfluencePage
+docker run --rm \
+  -e CONFLUENCE_URL="https://your-domain.atlassian.net" \
+  -e CONFLUENCE_USER="email@example.com" \
+  -e CONFLUENCE_TOKEN="<api-token>" \
+  -v "$PWD":/work \
+  ghcr.io/arnaudroubinet/structurizr-confluence:latest \
+  --workspace /work/demo/itms-workspace.json \
+  --space "Test" \
+  --page-id 10977556
 ```
 
-This test:
-- Updates Confluence page ID 10977556 directly
-- Uses simple ADF content with workspace information
-- Tests the direct page update functionality
-- Validates the page ID is correctly returned
+- Exécuter les scripts d’export de diagrammes basés sur Playwright/Puppeteer:
+
+```bash
+# Playwright (Chrome déjà présent dans l’image)
+docker run --rm -v "$PWD":/work -w /opt/cli ghcr.io/arnaudroubinet/structurizr-confluence:latest \
+  node export-diagrams.playwright.js
+
+# Puppeteer (Installe automatiquement Chromium si besoin)
+docker run --rm -v "$PWD":/work -w /opt/cli ghcr.io/arnaudroubinet/structurizr-confluence:latest \
+  node export-diagrams.js
+```
+
+## Building from Source
+
+### Prerequisites
+- Java 21+
+- Maven 3.6+
+- Docker (for native compilation)
+
+### Build Options
+
+```bash
+# Clone repository
+git clone https://github.com/arnaudroubinet/Structurizr-confluence.git
+cd Structurizr-confluence
+
+# Build JAR
+mvn clean package
+
+# Build native executable (Linux)
+mvn clean package -Pnative
+
+# Run tests
+mvn test
+```
+
+### Dev Container Setup
+
+If you open this repository in VS Code Dev Containers, dependencies required for headless Chromium/Puppeteer and GraphViz are installed automatically via `postCreateCommand`:
+
+- Installs Ubuntu packages for Chromium and GraphViz
+- Runs `npm ci` and ensures Puppeteer browser binaries are available
+
+Manual run (outside of Dev Container):
+
+```
+bash scripts/init-dev.sh
+```
+
+**Native Executable Benefits:**
+- ⚡ Fast startup (~0.1s vs ~2s JVM)
+- 💾 Low memory (~50MB vs ~200MB JVM)
+- 📦 Single binary, no Java required
+- 🐧 Perfect for containers and CI/CD
+
+## What Gets Exported
+
+The tool exports comprehensive documentation from your Structurizr workspace:
+
+**Documentation Pages:**
+- Workspace overview and description
+- Software architecture documentation
+- All embedded documentation sections
+
+**Model Elements:**
+- People (users, stakeholders)
+- Software Systems (internal/external)
+- Containers (applications, services, databases)
+- Components (modules, classes, interfaces)
+
+**Views & Diagrams:**
+- System Landscape views
+- System Context views  
+- Container views
+- Component views
+- Deployment views
+- Custom views
+
+**Architecture Decision Records (ADRs):**
+- Decision status and dates
+- Context and problems
+- Considered options
+- Consequences and trade-offs
+
+All content is converted to native Atlassian Document Format (ADF) for perfect Confluence integration with proper formatting, links, and structure.
 
 ## License
 
@@ -369,18 +358,4 @@ This project is licensed under the Apache License 2.0.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues and pull requests.
-
----
-
-## Local build (Java 21)
-
-- Prérequis: JDK 21 et Maven 3.9+
-- Build standard: `./scripts/build.sh`
-
-## Copilot
-
-Consulte `.github/COPILOT.md` pour les règles agent/local. En résumé:
-
-- Agent autonome: exécute systématiquement `mvn clean install` avant de terminer.
-- Mode local: propose l’exécution du build, non obligatoire.
+Contributions are welcome! Please ensure all tests pass before submitting pull requests.

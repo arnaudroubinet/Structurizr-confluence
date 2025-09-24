@@ -12,7 +12,6 @@ public class LinkDetectionTest {
     
     @Test
     public void testLinkDetectionAndProcessing() {
-        logger.info("=== TEST DÉTECTION ET TRAITEMENT DES LIENS ===");
         
         // Test avec contenu contenant un lien arc42
         String htmlWithLink = "<p>This architecture document follows the <a href=\"https://arc42.org/overview\">arc42</a> template and describes the ITMS.</p>";

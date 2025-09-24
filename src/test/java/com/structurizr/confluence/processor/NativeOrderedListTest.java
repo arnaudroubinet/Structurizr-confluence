@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Tests pour vérifier que les listes ordonnées HTML sont converties en orderedList ADF natifs.
+ * Tests to verify que les listes ordonnées HTML sont converties en orderedList ADF natifs.
  */
 public class NativeOrderedListTest {
     private static final Logger logger = LoggerFactory.getLogger(NativeOrderedListTest.class);
@@ -23,7 +23,6 @@ public class NativeOrderedListTest {
 
     @Test
     public void testSimpleOrderedListConversion() throws JsonProcessingException {
-        logger.info("=== TEST SIMPLE ORDERED LIST CONVERSION ===");
         
         String htmlContent = "<ol><li>Premier item</li><li>Deuxième item</li><li>Troisième item</li></ol>";
         
@@ -44,7 +43,6 @@ public class NativeOrderedListTest {
 
     @Test
     public void testOrderedListWithInlineFormatting() throws JsonProcessingException {
-        logger.info("=== TEST ORDERED LIST WITH INLINE FORMATTING ===");
         
         String htmlContent = "<ol><li>Item avec <strong>gras</strong></li><li>Item avec <em>italique</em></li><li>Item avec <code>code</code></li></ol>";
         
@@ -71,7 +69,6 @@ public class NativeOrderedListTest {
     
     @Test
     public void testComparisonWithBulletList() throws JsonProcessingException {
-        logger.info("=== TEST COMPARISON ORDERED VS BULLET LIST ===");
         
         String orderedHtml = "<ol><li>Item ordonné 1</li><li>Item ordonné 2</li></ol>";
         String bulletHtml = "<ul><li>Item bullet 1</li><li>Item bullet 2</li></ul>";

@@ -12,7 +12,6 @@ class Arc42LinkTest {
     
     @Test
     void testArc42LinkConversion() {
-        logger.info("=== TEST FINAL : CONVERSION DU LIEN ARC42 ===");
         
         HtmlToAdfConverter converter = new HtmlToAdfConverter();
         

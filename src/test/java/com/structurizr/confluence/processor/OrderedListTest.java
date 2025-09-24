@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Tests pour vérifier le support des listes ordonnées dans ADF Builder.
+ * Tests to verify le support des listes ordonnées dans ADF Builder.
  */
 public class OrderedListTest {
     private static final Logger logger = LoggerFactory.getLogger(OrderedListTest.class);
@@ -16,7 +16,6 @@ public class OrderedListTest {
 
     @Test
     public void testOrderedListSupport() throws JsonProcessingException {
-        logger.info("=== TEST ORDERED LIST SUPPORT ===");
         
         // Créer un document simple avec un paragraphe pour commencer
         Document document = Document.create()

@@ -41,7 +41,7 @@ public class ConfluenceExporter {
     private final HtmlToAdfConverter htmlToAdfConverter;
     private final AsciiDocConverter asciiDocConverter;
     private final MarkdownConverter markdownConverter;
-    private List<File> exportedDiagrams; // Store exported diagrams for use during conversion
+    private List<File> exportedDiagrams;
     
     /**
      * Creates an exporter that loads workspaces from a Structurizr on-premise instance.
@@ -91,14 +91,12 @@ public class ConfluenceExporter {
     public void export(Workspace workspace, String branchName) throws Exception {
         logger.info("Starting export of workspace '{}' (branch '{}') to Confluence", workspace.getName(), branchName);
 
-        // Step 1: Export diagrams using Puppeteer if environment variables are set
         String workspaceId = getWorkspaceId(workspace);
         DiagramExporter diagramExporter = DiagramExporter.fromEnvironment(workspaceId);
         List<File> exportedDiagrams = null;
 
-        // Export des diagrammes: OBLIGATOIRE
         if (diagramExporter == null) {
-            throw new IllegalStateException("L'export des diagrammes via Puppeteer est obligatoire mais les variables d'environnement ne sont pas configurées. Veuillez définir STRUCTURIZR_URL, STRUCTURIZR_USERNAME et STRUCTURIZR_PASSWORD.");
+            throw new IllegalStateException("Diagram export via Puppeteer is required but environment variables are not configured. Please define STRUCTURIZR_URL, STRUCTURIZR_USERNAME and STRUCTURIZR_PASSWORD.");
         }
 
         try {
@@ -106,13 +104,11 @@ public class ConfluenceExporter {
             exportedDiagrams = diagramExporter.exportDiagrams(workspace);
             logger.info("Successfully exported {} diagrams", exportedDiagrams.size());
         } catch (Exception e) {
-            throw new IllegalStateException("Echec de l'export des diagrammes via Puppeteer. Arrêt du processus.", e);
+            throw new IllegalStateException("Diagram export via Puppeteer failed. Stopping process.", e);
         }
 
-        // Store exported diagrams for use by converters
         this.exportedDiagrams = exportedDiagrams;
         
-        // Configure converters to use local diagrams if available
         if (exportedDiagrams != null) {
             Function<String, File> diagramResolver = this::getDiagramFile;
             asciiDocConverter.setDiagramResolver(diagramResolver);
@@ -120,8 +116,6 @@ public class ConfluenceExporter {
             logger.info("Configured converters to use {} local diagram files", exportedDiagrams.size());
         }
 
-        // Step 2: Continue with normal export process
-        // Générer la page principale avec le nom de la branche
         String mainPageTitle = branchName;
         Document mainDoc = generateWorkspaceDocumentation(workspace, branchName);
         String mainPageId = confluenceClient.createOrUpdatePage(
@@ -131,7 +125,6 @@ public class ConfluenceExporter {
 
         logger.info("Main page created/updated with ID: {}", mainPageId);
 
-        // Créer d'abord la page Documentation sous la page principale pour obtenir un pageId (nécéssaire aux uploads)
         String documentationPageTitle = "Documentation";
         String documentationPageId = confluenceClient.createOrUpdatePage(
             documentationPageTitle,
@@ -145,10 +138,8 @@ public class ConfluenceExporter {
         htmlToAdfConverter.setImageUploadManager(docImageUploadManager);
         htmlToAdfConverter.setCurrentPageId(documentationPageId);
 
-        // Construire le contenu ADF de la page Documentation (TOC + sections)
         Document documentationDoc = Document.create();
 
-        // Insérer un sommaire Confluence via macro ADF (TOC), puis intégrer les sections
         String documentationJson = convertDocumentToJson(documentationDoc);
         ObjectNode documentationNode = objectMapper.readTree(documentationJson) instanceof ObjectNode
             ? (ObjectNode) objectMapper.readTree(documentationJson)
@@ -165,7 +156,7 @@ public class ConfluenceExporter {
         // https://developer.atlassian.com/platform/forge/adopting-forge-from-connect-migrate-macro
         extAttrs.put("extensionType", "com.atlassian.confluence.macro.core");
         extAttrs.put("extensionKey", "toc");
-        // Options par défaut (laisser Confluence gérer), pas de paramètres requis
+        // Default options (let Confluence manage), no parameters required
         tocNode.set("attrs", extAttrs);
         docContent.add(tocNode);
 
@@ -185,11 +176,9 @@ public class ConfluenceExporter {
                     htmlContent = content;
                 }
 
-                // Extraire puis ignorer le titre H1 éventuel (le H1 est retiré du contenu et ne doit pas être ajouté en tête)
-                // Pas d'ajout de H2 basé sur le H1 ou le nom de fichier
                 htmlToAdfConverter.extractPageTitleOnly(htmlContent);
 
-                // Convertir le HTML de la section en ADF JSON (avec post-traitements)
+                // Convert section HTML to ADF JSON (avec post-traitements)
                 String sectionAdfJson = htmlToAdfConverter.convertToAdfJson(htmlContent, filenameFallback);
                 ObjectNode sectionDocNode = objectMapper.readTree(sectionAdfJson) instanceof ObjectNode
                     ? (ObjectNode) objectMapper.readTree(sectionAdfJson)
@@ -205,15 +194,14 @@ public class ConfluenceExporter {
 
         String finalDocumentationJson = objectMapper.writeValueAsString(documentationNode);
 
-        // Mettre à jour la page Documentation avec le contenu complet (images uploadées sur cette page)
+        // Update Documentation page with complete content (images uploadées sur cette page)
         confluenceClient.updatePageById(documentationPageId, documentationPageTitle, finalDocumentationJson);
         logger.info("Documentation page content updated (ID: {})", documentationPageId);
-        // Ne plus créer de sous-pages pour les sections: contenu déjà inliné ci-dessus
+        // No longer create sub-pages for sections: content already inlined above
 
     // Générer une seule page avec toutes les vues (toutes les images de diagrammes)
     exportAllViewsSinglePage(workspace, mainPageId);
 
-    // Générer la documentation du modèle
     exportModel(workspace, mainPageId);
 
     // Générer les ADRs
@@ -242,7 +230,30 @@ public class ConfluenceExporter {
         logger.info("Confluence space cleanup completed");
     }
 
-    // Pour compatibilité ascendante
+    /**
+     * Cleans a specific page tree by deleting the page and all its subpages.
+     * 
+     * @param pageTitle the title of the page to clean (including all subpages)
+     * @throws Exception if cleanup fails
+     */
+    public void cleanPageTree(String pageTitle) throws Exception {
+        logger.info("Starting page tree cleanup for: {}", pageTitle);
+        confluenceClient.cleanPageTree(pageTitle);
+        logger.info("Page tree cleanup completed for: {}", pageTitle);
+    }
+
+    /**
+     * Cleans a specific page tree by deleting the page and all its subpages using page ID.
+     * 
+     * @param pageId the ID of the page to clean (including all subpages)
+     * @throws Exception if cleanup fails
+     */
+    public void cleanPageTreeById(String pageId) throws Exception {
+        logger.info("Starting page tree cleanup for ID: {}", pageId);
+        confluenceClient.cleanPageTreeById(pageId);
+        logger.info("Page tree cleanup completed for ID: {}", pageId);
+    }
+
     public void export(Workspace workspace) throws Exception {
         export(workspace, workspace.getName());
     }
@@ -255,25 +266,24 @@ public class ConfluenceExporter {
      * @throws Exception if processing or export fails
      */
     /**
-     * Exporte la documentation présente dans le Workspace (sections AsciiDoc déjà importées).
-     * @param workspace le workspace Structurizr
-     * @param parentPageId l'ID de la page parente Confluence
+     * Exports workspace documentation sections to Confluence.
+     * @param workspace the Structurizr workspace
+     * @param parentPageId the parent page ID in Confluence
+     * @param branchName the branch name for versioning
      */
     public void exportWorkspaceDocumentationSections(Workspace workspace, String parentPageId, String branchName) throws Exception {
         if (workspace.getDocumentation() == null || workspace.getDocumentation().getSections().isEmpty()) {
-            logger.info("Aucune section de documentation trouvée dans le workspace");
+            logger.info("No documentation sections found in workspace");
             return;
         }
 
         logger.info("Export des sections de documentation du workspace '{}', {} section(s)", workspace.getName(), workspace.getDocumentation().getSections().size());
 
-        // Exporter chaque section comme page Confluence
+        // Export each section as Confluence page
         for (com.structurizr.documentation.Section section : workspace.getDocumentation().getSections()) {
-            // Ignorer le titre de section déclaré dans le workspace
             String filenameFallback = section.getFilename();
             String content = section.getContent();
 
-            // Déterminer le format et convertir si nécessaire
             String htmlContent;
             String formatName = section.getFormat() != null ? section.getFormat().name() : "";
             
@@ -293,7 +303,6 @@ public class ConfluenceExporter {
 
             // Extraire le titre du contenu HTML (premier H1) si disponible
             String extractedTitle = htmlToAdfConverter.extractPageTitleOnly(htmlContent);
-            // Nouvelle règle: utiliser le H1 comme titre de page; sinon fallback sur le nom de fichier
             String actualTitle = (extractedTitle != null && !extractedTitle.trim().isEmpty()) ? extractedTitle : filenameFallback;
             
             // Setup image upload manager for this page
@@ -313,7 +322,7 @@ public class ConfluenceExporter {
 
             // Update page with actual content
             confluenceClient.updatePageById(pageId, pageTitle, adfJson);
-            logger.info("Section (filename: '{}') exportée vers la page ID: {} avec le titre: '{}'", filenameFallback, pageId, pageTitle);
+            logger.info("Section exported to page ID: {} avec le titre: '{}'", filenameFallback, pageId, pageTitle);
         }
     }
     
@@ -327,7 +336,6 @@ public class ConfluenceExporter {
 
     
     private Document generateWorkspaceDocumentation(Workspace workspace, String branchName) {
-        // Ne pas répéter le titre de page en H1 dans le corps
         Document doc = Document.create();
 
         // Description
@@ -396,7 +404,6 @@ public class ConfluenceExporter {
     private void exportAllViewsSinglePage(Workspace workspace, String parentPageId) throws Exception {
         ViewSet views = workspace.getViews();
 
-        // 1) Créer/mettre à jour une page vide d'abord pour obtenir un pageId (nécéssaire à l'upload des images)
         String viewsPageId = confluenceClient.createOrUpdatePage(
             "Views",
             "{\"version\":1,\"type\":\"doc\",\"content\":[]}",

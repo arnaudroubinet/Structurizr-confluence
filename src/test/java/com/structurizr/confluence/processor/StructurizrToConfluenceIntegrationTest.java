@@ -21,7 +21,6 @@ class StructurizrToConfluenceIntegrationTest {
     
     @Test
     void testCompleteWorkflowWithDemoContent() {
-        logger.info("=== TEST COMPLETE STRUCTURIZR → CONFLUENCE WORKFLOW ===");
         
         // Sample content from demo workspace with all formatting types
         String asciiDocContent = 

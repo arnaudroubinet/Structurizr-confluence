@@ -12,7 +12,6 @@ class Arc42WithTitleTest {
     
     @Test
     void testArc42ContentWithH1Title() {
-        logger.info("=== TEST : CONTENU ARC42 RÉALISTE AVEC TITRE H1 ===");
         
         HtmlToAdfConverter converter = new HtmlToAdfConverter();
         

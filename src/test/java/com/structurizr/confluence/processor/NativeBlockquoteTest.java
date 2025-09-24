@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Tests pour vérifier que les blockquotes HTML sont convertis en blockquote ADF natifs.
+ * Tests to verify que les blockquotes HTML sont convertis en blockquote ADF natifs.
  */
 public class NativeBlockquoteTest {
     private static final Logger logger = LoggerFactory.getLogger(NativeBlockquoteTest.class);
@@ -23,7 +23,6 @@ public class NativeBlockquoteTest {
 
     @Test
     public void testSimpleBlockquoteConversion() throws JsonProcessingException {
-        logger.info("=== TEST SIMPLE BLOCKQUOTE CONVERSION ===");
         
         String htmlContent = "<blockquote><p>Ceci est une citation importante pour illustrer un point clé.</p></blockquote>";
         
@@ -41,7 +40,6 @@ public class NativeBlockquoteTest {
 
     @Test
     public void testBlockquoteWithInlineFormatting() throws JsonProcessingException {
-        logger.info("=== TEST BLOCKQUOTE WITH INLINE FORMATTING ===");
         
         String htmlContent = "<blockquote><p>Citation avec <strong>texte important</strong> et <em>emphasis</em>.</p></blockquote>";
         
@@ -66,7 +64,6 @@ public class NativeBlockquoteTest {
     
     @Test
     public void testMultipleParagraphsInBlockquote() throws JsonProcessingException {
-        logger.info("=== TEST MULTIPLE PARAGRAPHS IN BLOCKQUOTE ===");
         
         String htmlContent = "<blockquote><p>Premier paragraphe de la citation.</p><p>Deuxième paragraphe avec plus de détails.</p></blockquote>";
         
@@ -90,7 +87,6 @@ public class NativeBlockquoteTest {
     
     @Test
     public void testSimpleTextBlockquote() throws JsonProcessingException {
-        logger.info("=== TEST SIMPLE TEXT BLOCKQUOTE ===");
         
         String htmlContent = "<blockquote>Citation simple sans balise paragraphe.</blockquote>";
         
@@ -107,7 +103,6 @@ public class NativeBlockquoteTest {
     
     @Test
     public void testComparisonWithOldFormat() throws JsonProcessingException {
-        logger.info("=== TEST COMPARISON WITH OLD FORMAT ===");
         
         String htmlContent = "<blockquote><p>Cette citation ne devrait plus avoir de préfixe manuel.</p></blockquote>";
         

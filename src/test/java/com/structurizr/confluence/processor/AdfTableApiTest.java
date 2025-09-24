@@ -7,7 +7,7 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 
 /**
- * Test pour explorer l'API ADF disponible pour les tables.
+ * Test to explore l'API ADF disponible pour les tables.
  */
 public class AdfTableApiTest {
 
@@ -32,7 +32,7 @@ public class AdfTableApiTest {
         
         // Test simple de création de document
         Document doc = Document.create();
-        System.out.println("\nDocument créé: " + doc.getClass().getName());
+        System.out.println("\nDocument created: " + doc.getClass().getName());
         
         // Essayer de voir si on peut accéder à des méthodes de table
         try {

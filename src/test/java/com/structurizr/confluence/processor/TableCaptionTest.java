@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Tests pour vérifier le support des captions de tableaux.
+ * Tests to verify le support des captions de tableaux.
  */
 public class TableCaptionTest {
     private static final Logger logger = LoggerFactory.getLogger(TableCaptionTest.class);
@@ -23,7 +23,6 @@ public class TableCaptionTest {
 
     @Test
     public void testCurrentTableCaptionHandling() throws JsonProcessingException {
-        logger.info("=== TEST CURRENT TABLE CAPTION HANDLING ===");
         
         String htmlContent = "<table><caption>Titre du tableau de test</caption><tr><th>Header 1</th><th>Header 2</th></tr><tr><td>Data 1</td><td>Data 2</td></tr></table>";
         
@@ -48,7 +47,6 @@ public class TableCaptionTest {
 
     @Test
     public void testTableWithoutCaption() throws JsonProcessingException {
-        logger.info("=== TEST TABLE WITHOUT CAPTION (COMPARISON) ===");
         
         String htmlContent = "<table><tr><th>Header 1</th><th>Header 2</th></tr><tr><td>Data 1</td><td>Data 2</td></tr></table>";
         
@@ -61,7 +59,6 @@ public class TableCaptionTest {
     
     @Test
     public void testMultipleCaptionElements() throws JsonProcessingException {
-        logger.info("=== TEST MULTIPLE CAPTION SCENARIOS ===");
         
         // Test avec caption avant et après le tableau (edge case)
         String htmlContent1 = "<table><caption>Caption avant</caption><tr><th>Header</th></tr><tr><td>Data</td></tr></table>";

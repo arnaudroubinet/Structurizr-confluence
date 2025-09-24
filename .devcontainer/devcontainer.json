@@ -8,6 +8,9 @@
     },
     "ghcr.io/devcontainers/features/node:1": {
       "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest"
     }
   },
   "customizations": {
@@ -33,5 +36,6 @@
         }
       }
     }
-  }
+  },
+  "postCreateCommand": "bash scripts/init-dev.sh"
 }

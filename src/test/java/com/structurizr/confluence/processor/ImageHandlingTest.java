@@ -19,7 +19,6 @@ class ImageHandlingTest {
     
     @Test
     void testExternalImageHandling() throws Exception {
-        logger.info("=== TEST EXTERNAL IMAGE HANDLING ===");
         
         // Test external image with Structurizr diagram URL
         String htmlWithExternalImage = "<img src=\"https://structurizr.roubinet.fr/workspace/1/diagrams/itms-context.svg\" alt=\"Context Diagram\" title=\"ITMS Context View\">";
@@ -46,7 +45,6 @@ class ImageHandlingTest {
     
     @Test
     void testLocalImageHandling() throws Exception {
-        logger.info("=== TEST LOCAL IMAGE HANDLING ===");
         
         // Test local/attached image
         String htmlWithLocalImage = "<img src=\"diagram.png\" alt=\"Architecture Diagram\">";
@@ -69,7 +67,6 @@ class ImageHandlingTest {
     
     @Test
     void testImageWithoutCaptionHandling() throws Exception {
-        logger.info("=== TEST IMAGE WITHOUT CAPTION ===");
         
         // Test image without alt or title
         String htmlWithoutCaption = "<img src=\"https://example.com/image.jpg\">";
@@ -90,7 +87,6 @@ class ImageHandlingTest {
     
     @Test
     void testStructurizrDiagramEmbedWorkflow() throws Exception {
-        logger.info("=== TEST STRUCTURIZR DIAGRAM EMBED WORKFLOW ===");
         
         // Test the complete workflow: AsciiDoc -> HTML -> ADF for Structurizr diagrams
         AsciiDocConverter asciiConverter = new AsciiDocConverter();

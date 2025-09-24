@@ -71,7 +71,6 @@ class StructurizrFormattingValidationTest {
     
     @Test 
     void testComplexInlineFormattingMix() {
-        logger.info("=== TEST FORMATAGE INLINE COMPLEXE ===");
         
         // Test avec formatage imbriqué et multiple
         String htmlWithComplexFormatting = 

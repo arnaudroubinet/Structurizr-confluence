@@ -14,7 +14,6 @@ class DiagramExporterTest {
     
     @Test
     void testFromEnvironmentWithoutVariables() {
-        logger.info("=== TEST DIAGRAM EXPORTER WITHOUT ENVIRONMENT VARIABLES ===");
         
         // Si l'environnement de CI définit déjà les variables, ignorer ce test
         if (System.getenv("STRUCTURIZR_URL") != null ||
@@ -34,7 +33,6 @@ class DiagramExporterTest {
     
     @Test
     void testFromEnvironmentWithVariables() {
-        logger.info("=== TEST DIAGRAM EXPORTER WITH MOCK ENVIRONMENT VARIABLES ===");
         
         // This test would require setting environment variables
         // In a real scenario, the CI/CD would set these
@@ -58,7 +56,6 @@ class DiagramExporterTest {
     
     @Test 
     void testOutputDirectoryCreation() {
-        logger.info("=== TEST OUTPUT DIRECTORY HANDLING ===");
         
         DiagramExporter exporter = new DiagramExporter(
             "https://structurizr.roubinet.fr",

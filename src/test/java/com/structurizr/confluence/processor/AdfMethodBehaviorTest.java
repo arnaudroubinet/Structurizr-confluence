@@ -13,7 +13,6 @@ public class AdfMethodBehaviorTest {
     
     @Test
     public void testFromMarkdownVsParagraph() throws Exception {
-        logger.info("=== TEST fromMarkdown() vs paragraph() ===");
         
         // Test 1: Méthode paragraph() - accumulation
         Document doc1 = Document.create();

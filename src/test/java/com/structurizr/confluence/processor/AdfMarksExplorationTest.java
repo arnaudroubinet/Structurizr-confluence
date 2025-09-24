@@ -42,7 +42,6 @@ class AdfMarksExplorationTest {
             // Essayons de créer un paragraphe avec du formatage
             
             // Option 1: Voir si paragraph() peut prendre du contenu complexe
-            logger.info("\n=== TEST DE CRÉATION DE CONTENU FORMATÉ ===");
             
             // Essayer d'accéder aux classes de nœuds
             logger.info("Classes disponibles:");

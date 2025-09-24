@@ -39,7 +39,6 @@ public class HtmlProcessingDebugTest {
             </div>
             """;
         
-        logger.info("=== TEST HTML SIMPLE ===");
         logger.info("HTML d'entrée:\\n{}", simpleHtml);
         
         String adfJson = htmlToAdfConverter.convertToAdfJson(simpleHtml, "Test Simple");
@@ -87,7 +86,6 @@ public class HtmlProcessingDebugTest {
             <p>Troisième paragraphe.</p>
             """;
         
-        logger.info("=== TEST PARAGRAPHES MULTIPLES ===");
         logger.info("HTML d'entrée:\\n{}", multiParagraphHtml);
         
         String adfJson = htmlToAdfConverter.convertToAdfJson(multiParagraphHtml, "Test Multi");
