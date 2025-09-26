@@ -23,6 +23,27 @@ LABEL org.opencontainers.image.source="https://github.com/arnaudroubinet/Structu
       org.opencontainers.image.description="CLI that exports Structurizr workspaces to Confluence in ADF format" \
       org.opencontainers.image.licenses="Apache-2.0"
 
+# Install only Node.js and npm
+RUN apt-get update && apt-get install -y \
+    nodejs \
+    npm \
+    # Additional dependencies for Puppeteer/Chrome
+    wget \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libxss1 \
+    libxtst6 \
+    xdg-utils \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy Quarkus fast-jar layout
 COPY --from=build /work/target/quarkus-app/ ./quarkus-app/
 
