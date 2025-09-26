@@ -42,7 +42,19 @@ RUN apt-get update && apt-get install -y \
     libxtst6 \
     xdg-utils \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g puppeteer \
+    && npm cache clean --force \
+    && rm -rf /root/.npm \
+    && rm -rf /tmp/* \
+    && apt-get clean \
+    && apt-get autoclean \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apt/archives/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
+
 
 # Copy Quarkus fast-jar layout
 COPY --from=build /work/target/quarkus-app/ ./quarkus-app/
