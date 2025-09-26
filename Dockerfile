@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g puppeteer \
+    && npm install puppeteer \
     && npm cache clean --force \
     && rm -rf /root/.npm \
     && rm -rf /tmp/* \
