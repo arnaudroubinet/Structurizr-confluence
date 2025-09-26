@@ -43,8 +43,6 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install puppeteer \
-    && npm cache clean --force \
     && rm -rf /root/.npm \
     && rm -rf /tmp/* \
     && apt-get clean \
@@ -55,6 +53,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /tmp/* \
     && rm -rf /var/tmp/*
 
+RUN mkdir -p /opt/node_project && cd /opt/node_project \
+    && npm init -y \
+    && npm install puppeteer \
+    && npm cache clean --force
+    
+ENV NODE_PATH=/opt/node_project/node_modules
 
 # Copy Quarkus fast-jar layout
 COPY --from=build /work/target/quarkus-app/ ./quarkus-app/
