@@ -20,6 +20,12 @@ jobs:
           java-version: '21'
           cache: 'maven'
 
+      - name: Verify Java version
+        run: |
+          java -version
+          mvn -version
+          echo "JAVA_HOME: $JAVA_HOME"
+
       - name: Install Playwright browsers with dependencies
         run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
 
