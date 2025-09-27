@@ -23,42 +23,39 @@ LABEL org.opencontainers.image.source="https://github.com/arnaudroubinet/Structu
       org.opencontainers.image.description="CLI that exports Structurizr workspaces to Confluence in ADF format" \
       org.opencontainers.image.licenses="Apache-2.0"
 
-# Install only Node.js and npm
+# Install Playwright browser dependencies
 RUN apt-get update && apt-get install -y \
-    nodejs \
-    npm \
-    # Additional dependencies for Puppeteer/Chrome
-    wget \
-    gnupg \
-    ca-certificates \
-    fonts-liberation \
-    libasound2t64 \
+    # Playwright browser dependencies
+    libnss3 \
+    libnspr4 \
     libatk-bridge2.0-0 \
     libdrm2 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
     libxss1 \
+    libgconf-2-4 \
     libxtst6 \
+    libxrandr2 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libatk1.0-0 \
+    libcairo-gobject2 \
+    libgtk-3-0 \
+    libgdk-pixbuf2.0-0 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxi6 \
+    libxinerama1 \
+    libxss1 \
+    libxext6 \
+    libx11-6 \
+    fonts-liberation \
+    libappindicator3-1 \
     xdg-utils \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /root/.npm \
-    && rm -rf /tmp/* \
-    && apt-get clean \
-    && apt-get autoclean \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /var/cache/apt/archives/* \
     && rm -rf /tmp/* \
     && rm -rf /var/tmp/*
-
-RUN mkdir -p /opt/node_project && cd /opt/node_project \
-    && npm init -y \
-    && npm install puppeteer \
-    && npm cache clean --force
-    
-ENV NODE_PATH=/opt/node_project/node_modules
 
 # Copy Quarkus fast-jar layout
 COPY --from=build /work/target/quarkus-app/ ./quarkus-app/

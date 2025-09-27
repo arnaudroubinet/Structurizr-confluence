@@ -96,7 +96,7 @@
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.17.2</version>
+            <version>1.21.2</version>
         </dependency>
 
         <!-- Logging -->
@@ -110,6 +110,13 @@
             <groupId>org.brotli</groupId>
             <artifactId>dec</artifactId>
             <version>0.1.2</version>
+        </dependency>
+
+        <!-- Playwright Java for diagram export (replacing Puppeteer) -->
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>1.48.0</version>
         </dependency>
 
         <!-- Test dependencies -->
@@ -160,6 +167,47 @@
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                     </systemPropertyVariables>
                 </configuration>
+            </plugin>
+            <!-- Dependency analysis plugin to find unused dependencies -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.0</version>
+                <configuration>
+                    <failOnWarning>false</failOnWarning>
+                    <ignoreNonCompile>false</ignoreNonCompile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>analyze-dependencies</id>
+                        <goals>
+                            <goal>analyze-report</goal>
+                        </goals>
+                        <phase>verify</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- SpotBugs plugin for code analysis and dead code detection -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>4.8.2.0</version>
+                <configuration>
+                    <effort>Max</effort>
+                    <threshold>Low</threshold>
+                    <xmlOutput>true</xmlOutput>
+                    <findbugsXmlOutput>true</findbugsXmlOutput>
+                    <findbugsXmlWithMessages>true</findbugsXmlWithMessages>
+                    <includeFilterFile>spotbugs-include.xml</includeFilterFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <phase>verify</phase>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
