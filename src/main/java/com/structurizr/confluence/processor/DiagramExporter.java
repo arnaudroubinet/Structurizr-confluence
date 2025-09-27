@@ -85,14 +85,6 @@ public class DiagramExporter {
         
         List<File> exportedFiles = new ArrayList<>();
         
-        // Check if we're in a CI environment or test environment - skip actual browser automation
-        String ciEnv = System.getenv("CI");
-        String githubActions = System.getenv("GITHUB_ACTIONS");
-        if ("true".equals(ciEnv) || "true".equals(githubActions)) {
-            logger.info("Running in CI environment - skipping actual diagram export");
-            return exportedFiles;
-        }
-        
         try (Playwright playwright = Playwright.create()) {
             Browser browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
                 .setHeadless(true)

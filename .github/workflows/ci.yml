@@ -31,6 +31,9 @@ jobs:
           java-version: '21'
           cache: 'maven'
 
+      - name: Install Playwright browsers
+        run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install"
+
       - name: Build with Maven
         run: mvn -B --no-transfer-progress clean install
 
