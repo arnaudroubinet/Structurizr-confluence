@@ -31,10 +31,9 @@ RUN apt-get update && apt-get install -y \
     libatk-bridge2.0-0 \
     libdrm2 \
     libxss1 \
-    libgconf-2-4 \
     libxtst6 \
     libxrandr2 \
-    libasound2 \
+    libasound2t64 \
     libpangocairo-1.0-0 \
     libatk1.0-0 \
     libcairo-gobject2 \
