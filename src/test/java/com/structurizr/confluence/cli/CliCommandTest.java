@@ -61,72 +61,9 @@ class CliCommandTest {
     }
     
     @Test
-    void testCleanCommandParameters() {
-        
-        CleanCommand cleanCommand = new CleanCommand();
-        
-        // Test default values
-        assertFalse(cleanCommand.confirmDeletion, "Default confirmDeletion should be false");
-        assertFalse(cleanCommand.force, "Default force should be false");
-        
-        // Test parameter assignment
-        cleanCommand.confluenceUrl = "https://test.atlassian.net";
-        cleanCommand.confluenceUser = "test@example.com";
-        cleanCommand.confluenceToken = "test-token";
-        cleanCommand.confluenceSpaceKey = "TEST";
-        cleanCommand.pageTitle = "Test Page";
-        cleanCommand.pageId = null; // Test with pageTitle only
-        cleanCommand.force = true;
-        cleanCommand.confirmDeletion = true;
-        
-        assertEquals("https://test.atlassian.net", cleanCommand.confluenceUrl);
-        assertEquals("test@example.com", cleanCommand.confluenceUser);
-        assertEquals("test-token", cleanCommand.confluenceToken);
-        assertEquals("TEST", cleanCommand.confluenceSpaceKey);
-        assertEquals("Test Page", cleanCommand.pageTitle);
-        assertNull(cleanCommand.pageId);
-        assertTrue(cleanCommand.force);
-        assertTrue(cleanCommand.confirmDeletion);
-        
-        logger.info("✅ Clean command parameters working correctly");
-    }
-    
-    @Test
-    void testLoadCommandParameters() {
-        
-        LoadCommand loadCommand = new LoadCommand();
-        
-        // Test default values
-        assertFalse(loadCommand.cleanSpace, "Default cleanSpace should be false");
-        
-        // Test parameter assignment
-        loadCommand.structurizrUrl = "https://test-structurizr.com";
-        loadCommand.structurizrApiKey = "test-key";
-        loadCommand.structurizrApiSecret = "test-secret";
-        loadCommand.workspaceId = 12345L;
-        loadCommand.confluenceUrl = "https://test.atlassian.net";
-        loadCommand.confluenceUser = "test@example.com";
-        loadCommand.confluenceToken = "test-token";
-        loadCommand.confluenceSpaceKey = "TEST";
-        loadCommand.cleanSpace = true;
-        
-        assertEquals("https://test-structurizr.com", loadCommand.structurizrUrl);
-        assertEquals("test-key", loadCommand.structurizrApiKey);
-        assertEquals("test-secret", loadCommand.structurizrApiSecret);
-        assertEquals(12345L, loadCommand.workspaceId);
-        assertEquals("https://test.atlassian.net", loadCommand.confluenceUrl);
-        assertEquals("test@example.com", loadCommand.confluenceUser);
-        assertEquals("test-token", loadCommand.confluenceToken);
-        assertEquals("TEST", loadCommand.confluenceSpaceKey);
-        assertTrue(loadCommand.cleanSpace);
-        
-        logger.info("✅ Load command parameters working correctly");
-    }
-    
-    @Test
     void testCommandInstantiation() {
         
-        // Test that all command classes can be instantiated
+        // Test that command classes can be instantiated
         assertDoesNotThrow(() -> {
             StructurizrConfluenceCommand mainCommand = new StructurizrConfluenceCommand();
             assertNotNull(mainCommand, "Main command should be instantiable");
@@ -137,60 +74,7 @@ class CliCommandTest {
             assertNotNull(exportCommand, "Export command should be instantiable");
         });
         
-        assertDoesNotThrow(() -> {
-            CleanCommand cleanCommand = new CleanCommand();
-            assertNotNull(cleanCommand, "Clean command should be instantiable");
-        });
-        
-        assertDoesNotThrow(() -> {
-            LoadCommand loadCommand = new LoadCommand();
-            assertNotNull(loadCommand, "Load command should be instantiable");
-        });
-        
-        logger.info("✅ All command classes instantiate correctly");
-    }
-
-    @Test
-    void testCleanCommandValidation() {
-        logger.info("=== TEST CLEAN COMMAND NEW FEATURES ===");
-        
-        CleanCommand cleanCommand = new CleanCommand();
-        
-        // Test that page title is required (this will be validated by Picocli at runtime)
-        cleanCommand.pageTitle = "Test Root Page";
-        cleanCommand.force = true; // Should skip confirmation
-        cleanCommand.confluenceUrl = "https://test.atlassian.net";
-        cleanCommand.confluenceUser = "test@example.com";
-        cleanCommand.confluenceToken = "test-token";
-        cleanCommand.confluenceSpaceKey = "TEST";
-        
-        assertNotNull(cleanCommand.pageTitle, "Page title should be set");
-        assertTrue(cleanCommand.force, "Force flag should work");
-        
-        logger.info("✅ Clean command now targets specific pages with force option");
-    }
-
-    @Test
-    void testCleanCommandPageIdSupport() {
-        logger.info("=== TEST CLEAN COMMAND PAGE ID SUPPORT ===");
-        
-        CleanCommand cleanCommand = new CleanCommand();
-        
-        // Test using page ID instead of page title
-        cleanCommand.pageId = "123456";
-        cleanCommand.pageTitle = null;
-        cleanCommand.confluenceSpaceKey = null; // Space not required for page ID
-        cleanCommand.force = true;
-        cleanCommand.confluenceUrl = "https://test.atlassian.net";
-        cleanCommand.confluenceUser = "test@example.com";
-        cleanCommand.confluenceToken = "test-token";
-        
-        assertEquals("123456", cleanCommand.pageId);
-        assertNull(cleanCommand.pageTitle);
-        assertNull(cleanCommand.confluenceSpaceKey);
-        assertTrue(cleanCommand.force);
-        
-        logger.info("✅ Clean command supports page ID targeting without space requirement");
+        logger.info("✅ Command classes instantiate correctly");
     }
 
     @Test

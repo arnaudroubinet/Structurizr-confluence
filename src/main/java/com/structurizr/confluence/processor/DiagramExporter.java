@@ -1,5 +1,7 @@
 package com.structurizr.confluence.processor;
 
+import com.microsoft.playwright.*;
+import com.microsoft.playwright.options.WaitForSelectorState;
 import com.structurizr.Workspace;
 import com.structurizr.view.View;
 import com.structurizr.view.ViewSet;
@@ -11,13 +13,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Exports diagrams from a Structurizr workspace using Puppeteer script.
+ * Exports diagrams from a Structurizr workspace using Playwright Java.
  * Downloads diagrams as local files that can then be uploaded to Confluence.
  */
 public class DiagramExporter {
@@ -36,10 +37,9 @@ public class DiagramExporter {
         this.password = password;
         this.workspaceId = workspaceId;
         this.outputDirectory = Paths.get("target", "diagrams");
-        // Overall timeout for the Puppeteer export process. Defaults to 300 seconds.
-        // Can be overridden with env var PUPPETEER_MAX_DURATION_SECS to accommodate slower environments
-        // or additional fallback attempts in the export script.
-        this.maxDurationSeconds = parseIntEnv("PUPPETEER_MAX_DURATION_SECS", 300);
+        // Overall timeout for the diagram export process. Defaults to 300 seconds.
+        // Can be overridden with env var PLAYWRIGHT_MAX_DURATION_SECS to accommodate slower environments
+        this.maxDurationSeconds = parseIntEnv("PLAYWRIGHT_MAX_DURATION_SECS", 300);
     }
     
     /**
@@ -54,7 +54,7 @@ public class DiagramExporter {
         String password = System.getenv("STRUCTURIZR_PASSWORD");
 
         if (url == null || user == null || password == null) {
-            logger.warn("STRUCTURIZR_URL, STRUCTURIZR_USERNAME ou STRUCTURIZR_PASSWORD non définies. Export des diagrammes indisponible.");
+            logger.warn("STRUCTURIZR_URL, STRUCTURIZR_USERNAME or STRUCTURIZR_PASSWORD not defined. Diagram export unavailable.");
             return null;
         }
 
@@ -62,14 +62,14 @@ public class DiagramExporter {
     }
     
     /**
-     * Exports all diagrams from the workspace using the Puppeteer script.
+     * Exports all diagrams from the workspace using Playwright.
      * 
      * @param workspace the workspace to analyze for diagram export
      * @return list of exported diagram files
      * @throws IOException if export fails
      */
     public List<File> exportDiagrams(Workspace workspace) throws IOException {
-        logger.info("Starting diagram export using Puppeteer for workspace {}", workspaceId);
+        logger.info("Starting diagram export using Playwright for workspace {}", workspaceId);
         
         // Create output directory
         Files.createDirectories(outputDirectory);
@@ -83,55 +83,261 @@ public class DiagramExporter {
         
         logger.info("Exporting diagrams from: {}", workspaceUrl);
         
+        List<File> exportedFiles = new ArrayList<>();
+        
+        try (Playwright playwright = Playwright.create()) {
+            Browser browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
+                .setHeadless(true)
+                .setArgs(List.of("--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage")));
+            
+            BrowserContext context = browser.newContext();
+            Page page = context.newPage();
+            
+            // Sign in if credentials provided
+            if (username != null && password != null) {
+                logger.info("Authenticating with Structurizr...");
+                signIn(page, workspaceUrl);
+            }
+            
+            // Navigate to diagram viewer
+            String viewerUrl = workspaceUrl;
+            if (workspaceUrl.matches(".*/workspace/\\d+/?$")) {
+                viewerUrl = workspaceUrl.replaceAll("/?$", "") + "/diagrams";
+            }
+            
+            logger.info("Opening diagram viewer: {}", viewerUrl);
+            page.navigate(viewerUrl);
+            
+            // Wait for Structurizr to load
+            Frame structurizrFrame = findStructurizrFrame(page);
+            if (structurizrFrame == null) {
+                throw new IOException("Could not find Structurizr frame after waiting");
+            }
+            
+            // Wait for diagrams to be rendered
+            structurizrFrame.waitForFunction("() => window.structurizr && window.structurizr.scripting && window.structurizr.scripting.isDiagramRendered && window.structurizr.scripting.isDiagramRendered() === true", 
+                new Frame.WaitForFunctionOptions().setTimeout(60000));
+            
+            // Get views from Structurizr
+            Object viewsResult = structurizrFrame.evaluate("() => window.structurizr.scripting.getViews()");
+            @SuppressWarnings("unchecked")
+            List<Object> views = (List<Object>) viewsResult;
+            
+            logger.info("Found {} views to export", views.size());
+            
+            // Export each view
+            int exportCount = 0;
+            for (Object viewObj : views) {
+                exportCount += exportView(structurizrFrame, viewObj, exportedFiles);
+            }
+            
+            logger.info("Exported {} diagrams successfully", exportCount);
+            
+        } catch (Exception e) {
+            throw new IOException("Diagram export failed: " + e.getMessage(), e);
+        }
+        
+        return exportedFiles;
+    }
+    
+    /**
+     * Sign in to Structurizr.
+     */
+    private void signIn(Page page, String workspaceUrl) throws IOException {
         try {
-            // Install Node.js dependencies if needed
-            installNodeDependencies();
+            // Extract base URL for sign in
+            String[] parts = workspaceUrl.split("://");
+            String host = parts[0] + "://" + parts[1].substring(0, parts[1].indexOf('/'));
+            String signinUrl = host + "/signin";
             
-            // Run Puppeteer script to export diagrams
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                "node", "export-diagrams.js",
-                workspaceUrl,
-                "png",  // Export as PNG format
-                username,
-                password
-            );
+            logger.info("Signing in via: {}", signinUrl);
+            page.navigate(signinUrl);
             
-            processBuilder.directory(new File("."));
-            processBuilder.redirectErrorStream(true);
-            
-            Process process = processBuilder.start();
-
-            // Stream logs from the Node process for better diagnostics
-            new Thread(() -> {
-                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        logger.info("[puppeteer] {}", line);
+            // Try to find username/email field
+            Locator usernameField = null;
+            String[] userSelectors = {"#username", "input[name=\"username\"]", "#email", "#emailAddress", "input[type=\"email\"]", "input[name=\"email\"]"};
+            for (String selector : userSelectors) {
+                try {
+                    usernameField = page.locator(selector);
+                    if (usernameField.count() > 0) {
+                        break;
                     }
-                } catch (IOException ignored) { }
-            }).start();
-
-            // Wait for completion with timeout (configurable via PUPPETEER_MAX_DURATION_SECS)
-            boolean finished = process.waitFor(maxDurationSeconds, TimeUnit.SECONDS);
-            
-            if (!finished) {
-                process.destroyForcibly();
-                throw new IOException("Diagram export timed out after " + maxDurationSeconds + " seconds");
+                } catch (Exception ignored) {}
             }
             
-            int exitCode = process.exitValue();
-            if (exitCode != 0) {
-                throw new IOException("Diagram export failed with exit code: " + exitCode + ". See [puppeteer] logs above for details.");
+            // Try to find password field
+            Locator passwordField = null;
+            String[] passSelectors = {"#password", "input[name=\"password\"]", "input[type=\"password\"]"};
+            for (String selector : passSelectors) {
+                try {
+                    passwordField = page.locator(selector);
+                    if (passwordField.count() > 0) {
+                        break;
+                    }
+                } catch (Exception ignored) {}
             }
             
-            logger.info("Diagram export completed successfully");
+            if (usernameField == null || passwordField == null || usernameField.count() == 0 || passwordField.count() == 0) {
+                logger.warn("Could not find login fields, current URL: {}", page.url());
+                return;
+            }
             
-            // Move exported files to output directory and return list
-            return moveExportedFiles();
+            // Fill credentials
+            usernameField.fill(username);
+            passwordField.fill(password);
             
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Diagram export was interrupted", e);
+            // Submit form
+            try {
+                String[] submitSelectors = {"button[type=\"submit\"]", "input[type=\"submit\"]"};
+                boolean clicked = false;
+                for (String selector : submitSelectors) {
+                    try {
+                        Locator submitBtn = page.locator(selector);
+                        if (submitBtn.count() > 0) {
+                            submitBtn.click();
+                            clicked = true;
+                            break;
+                        }
+                    } catch (Exception ignored) {}
+                }
+                if (!clicked) {
+                    passwordField.press("Enter");
+                }
+                
+                // Wait for redirect away from signin
+                page.waitForFunction("() => !location.pathname.includes('/signin')", 
+                    new Page.WaitForFunctionOptions().setTimeout(20000));
+                
+            } catch (Exception e) {
+                logger.warn("Authentication might have failed: {}", e.getMessage());
+            }
+            
+        } catch (Exception e) {
+            throw new IOException("Sign in failed: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Find the frame containing Structurizr scripting.
+     */
+    private Frame findStructurizrFrame(Page page) {
+        int maxWaitTime = 60000; // 60 seconds
+        int checkInterval = 500; // 0.5 seconds
+        long startTime = System.currentTimeMillis();
+        
+        while (System.currentTimeMillis() - startTime < maxWaitTime) {
+            for (Frame frame : page.frames()) {
+                try {
+                    Object result = frame.evaluate("() => !!(window.structurizr && window.structurizr.scripting)");
+                    if (Boolean.TRUE.equals(result)) {
+                        logger.info("Found Structurizr frame");
+                        return frame;
+                    }
+                } catch (Exception ignored) {
+                    // Frame might not be ready yet
+                }
+            }
+            
+            try {
+                Thread.sleep(checkInterval);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Export a single view as PNG.
+     */
+    @SuppressWarnings("unchecked")
+    private int exportView(Frame structurizrFrame, Object viewObj, List<File> exportedFiles) throws IOException {
+        try {
+            // Convert view object to map for property access
+            // This is a simplified approach - in real implementation you'd need proper JSON handling
+            String viewKey = extractViewProperty(viewObj, "key");
+            String viewType = extractViewProperty(viewObj, "type");
+            
+            if (viewKey == null) {
+                logger.warn("Skipping view without key");
+                return 0;
+            }
+            
+            logger.info("Exporting view: {} (type: {})", viewKey, viewType);
+            
+            // Change to the view
+            structurizrFrame.evaluate("(v) => window.structurizr.scripting.changeView(v)", viewKey);
+            
+            // Wait for diagram to be rendered
+            Thread.sleep(2000); // Give it time to render
+            
+            int exportCount = 0;
+            
+            // Export diagram
+            String diagramFilename = "structurizr-" + workspaceId + "-" + viewKey + ".png";
+            Path diagramPath = outputDirectory.resolve(diagramFilename);
+            
+            // Take screenshot of only the diagram container element for a cleaner export
+            Locator diagramElement = structurizrFrame.locator(".structurizrDiagram, .diagram, [id*='diagram']").first();
+            if (diagramElement.count() > 0) {
+                diagramElement.screenshot(new Locator.ScreenshotOptions().setPath(diagramPath));
+            } else {
+                logger.warn("Could not find diagram element for view {}", viewKey);
+            }
+            
+            exportedFiles.add(diagramPath.toFile());
+            exportCount++;
+            
+            // Export key if not an image view
+            if (!"Image".equals(viewType)) {
+                String keyFilename = "structurizr-" + workspaceId + "-" + viewKey + "-key.png";
+                Path keyPath = outputDirectory.resolve(keyFilename);
+                
+                // For the key, we'd need to find the key element and screenshot it
+                // This is a simplified implementation - you might need to locate the key element specifically
+                try {
+                    Locator keyElement = structurizrFrame.locator(".structurizrKey, .key, [class*='key']").first();
+                    if (keyElement.count() > 0) {
+                        keyElement.screenshot(new Locator.ScreenshotOptions().setPath(keyPath));
+                        exportedFiles.add(keyPath.toFile());
+                        exportCount++;
+                    }
+                } catch (Exception e) {
+                    logger.debug("Could not export key for view {}: {}", viewKey, e.getMessage());
+                }
+            }
+            
+            logger.debug("Exported {} files for view {}", exportCount, viewKey);
+            return exportCount;
+            
+        } catch (Exception e) {
+            logger.error("Failed to export view: {}", e.getMessage(), e);
+            return 0;
+        }
+    }
+    
+    /**
+     * Extract a property from a view object (simplified implementation).
+     */
+    private String extractViewProperty(Object viewObj, String property) {
+        try {
+            // In a real implementation, you'd properly parse the JavaScript object
+            // This is a simplified version that assumes string representation parsing
+            String viewStr = viewObj.toString();
+            if (viewStr.contains(property + "=")) {
+                // Basic parsing - in production you'd want proper JSON handling
+                String[] parts = viewStr.split(property + "=");
+                if (parts.length > 1) {
+                    String value = parts[1].split("[,}]")[0].trim();
+                    return value.replaceAll("[\"']", "");
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            logger.debug("Could not extract property {} from view: {}", property, e.getMessage());
+            return null;
         }
     }
 
@@ -150,71 +356,6 @@ public class DiagramExporter {
                 .warn("Invalid integer for env {}: '{}'. Using default {}.", name, value, defaultValue);
             return defaultValue;
         }
-    }
-    
-    /**
-     * Installs Node.js dependencies if package.json exists.
-     */
-    private void installNodeDependencies() throws IOException {
-        File packageJson = new File("package.json");
-        File nodeModules = new File("node_modules");
-        
-        if (packageJson.exists() && !nodeModules.exists()) {
-            logger.info("Installing Node.js dependencies...");
-            
-            try {
-                ProcessBuilder npm = new ProcessBuilder("npm", "install");
-                npm.directory(new File("."));
-                Process process = npm.start();
-                
-                boolean finished = process.waitFor(180, TimeUnit.SECONDS);
-                if (!finished) {
-                    process.destroyForcibly();
-                    throw new IOException("npm install timed out after 180 seconds");
-                }
-                
-                if (process.exitValue() != 0) {
-                    throw new IOException("npm install failed with exit code: " + process.exitValue());
-                }
-                
-                logger.info("Node.js dependencies installed successfully");
-                
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("npm install was interrupted", e);
-            }
-        }
-    }
-    
-    /**
-     * Moves exported diagram files to the target directory.
-     * 
-     * @return list of moved diagram files
-     * @throws IOException if file operations fail
-     */
-    private List<File> moveExportedFiles() throws IOException {
-        List<File> diagramFiles = new ArrayList<>();
-        File currentDir = new File(".");
-        
-        // Look for PNG files created by the export script
-        File[] files = currentDir.listFiles((dir, name) -> 
-            name.endsWith(".png") && !name.equals("export-diagrams.js"));
-        
-        if (files != null) {
-            for (File file : files) {
-                Path sourcePath = file.toPath();
-                Path targetPath = outputDirectory.resolve(file.getName());
-                
-                // Move file to target directory (overwrite if exists to support re-runs)
-                Files.move(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                diagramFiles.add(targetPath.toFile());
-                
-                logger.debug("Moved diagram file: {} -> {}", sourcePath, targetPath);
-            }
-        }
-        
-        logger.info("Moved {} diagram files to {}", diagramFiles.size(), outputDirectory);
-        return diagramFiles;
     }
     
     /**
