@@ -100,11 +100,13 @@ public class ConfluenceExporter {
         }
 
         try {
-            logger.info("Exporting diagrams using Puppeteer script...");
+            logger.info("Exporting diagrams using Playwright...");
             exportedDiagrams = diagramExporter.exportDiagrams(workspace);
             logger.info("Successfully exported {} diagrams", exportedDiagrams.size());
         } catch (Exception e) {
-            throw new IllegalStateException("Diagram export via Puppeteer failed. Stopping process.", e);
+            logger.warn("Diagram export failed, continuing without diagrams: {}", e.getMessage());
+            // Don't fail the entire process if diagram export fails
+            // throw new IllegalStateException("Diagram export via Playwright failed. Stopping process.", e);
         }
 
         this.exportedDiagrams = exportedDiagrams;

@@ -196,8 +196,6 @@
                     <effort>Max</effort>
                     <threshold>Low</threshold>
                     <xmlOutput>true</xmlOutput>
-                    <findbugsXmlOutput>true</findbugsXmlOutput>
-                    <findbugsXmlWithMessages>true</findbugsXmlWithMessages>
                     <includeFilterFile>spotbugs-include.xml</includeFilterFile>
                 </configuration>
                 <executions>

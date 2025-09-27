@@ -13,10 +13,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install GraphViz
+      - name: Install GraphViz and Playwright dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y graphviz
+          # Install Playwright browser dependencies
+          sudo apt-get install -y libnss3 libnspr4 libatk-bridge2.0-0 libdrm2 libxss1 libgconf-2-4 \
+                                  libxtst6 libxrandr2 libasound2 libpangocairo-1.0-0 libatk1.0-0 \
+                                  libcairo-gobject2 libgtk-3-0 libgdk-pixbuf2.0-0 libxcomposite1 \
+                                  libxcursor1 libxdamage1 libxfixes3 libxi6 libxinerama1 libxext6 \
+                                  libx11-6 fonts-liberation libappindicator3-1 xdg-utils
 
       - name: Setup Java 21
         uses: actions/setup-java@v4
