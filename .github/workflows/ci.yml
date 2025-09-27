@@ -9,6 +9,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:24-dind
+        options: --privileged
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,8 +33,18 @@ jobs:
       - name: Install Playwright browsers with dependencies
         run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
 
+      - name: Setup Docker for Testcontainers
+        run: |
+          # Set Docker socket permissions for testcontainers
+          sudo chmod 666 /var/run/docker.sock
+          # Wait for Docker daemon
+          docker info
+
       - name: Build with Maven
         run: mvn -B --no-transfer-progress clean install
+        env:
+          # Enable Docker access for tests
+          TESTCONTAINERS_RYUK_DISABLED: true
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
