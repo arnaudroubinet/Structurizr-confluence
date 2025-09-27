@@ -46,7 +46,6 @@ To find Atlassian (Confluence, ADF, REST API) documentation using Context7:
 ### Prerequisites
 - **Java 21** (required - configured in pom.xml)
 - **Maven 3.6+**
-- **GraphViz** (for diagram generation - installed in CI)
 - **Internet connection** (for dependency downloads and optional integration tests)
 
 ### Standard Build Process

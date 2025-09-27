@@ -13,10 +13,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install GraphViz and Playwright dependencies
+      - name: Install Playwright browser dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y graphviz
           # Install Playwright browser dependencies
           sudo apt-get install -y libnss3 libnspr4 libatk-bridge2.0-0 libdrm2 libxss1 libgconf-2-4 \
                                   libxtst6 libxrandr2 libasound2 libpangocairo-1.0-0 libatk1.0-0 \
