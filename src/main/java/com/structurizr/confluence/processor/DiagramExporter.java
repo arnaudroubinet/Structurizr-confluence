@@ -279,10 +279,13 @@ public class DiagramExporter {
             String diagramFilename = "structurizr-" + workspaceId + "-" + viewKey + ".png";
             Path diagramPath = outputDirectory.resolve(diagramFilename);
             
-            // Take screenshot of the entire page (the frame will be visible)
-            // In a more sophisticated implementation, you could locate the frame element and screenshot just that
-            Page page = structurizrFrame.page();
-            page.screenshot(new Page.ScreenshotOptions().setPath(diagramPath));
+            // Take screenshot of only the diagram container element for a cleaner export
+            Locator diagramElement = structurizrFrame.locator(".structurizrDiagram, .diagram, [id*='diagram']").first();
+            if (diagramElement.count() > 0) {
+                diagramElement.screenshot(new Locator.ScreenshotOptions().setPath(diagramPath));
+            } else {
+                logger.warn("Could not find diagram element for view {}", viewKey);
+            }
             
             exportedFiles.add(diagramPath.toFile());
             exportCount++;
