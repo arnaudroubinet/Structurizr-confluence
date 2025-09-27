@@ -13,9 +13,7 @@ import picocli.CommandLine;
     description = "Export Structurizr workspaces to Confluence Cloud",
     mixinStandardHelpOptions = true,
     subcommands = {
-        ExportCommand.class,
-        CleanCommand.class,
-        LoadCommand.class
+        ExportCommand.class
     }
 )
 public class StructurizrConfluenceCommand {
