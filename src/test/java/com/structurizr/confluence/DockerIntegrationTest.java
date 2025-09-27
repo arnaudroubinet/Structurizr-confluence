@@ -43,6 +43,8 @@ public class DockerIntegrationTest {
     .withWorkingDirectory("/opt/structurizr");
 
     @Test
+    @org.junit.jupiter.api.condition.DisabledInNativeImage
+    @org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable(named = "CI", matches = "true")
     public void testDockerExportWorkflow() throws Exception {
         // Check environment variables
         String confluenceUser = System.getenv("CONFLUENCE_USER");
