@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for Structurizr Confluence CLI (JVM mode)
 # Single-stage Dockerfile for Structurizr Confluence CLI (pre-built artifacts)
-# Using runtime JRE 17 with all required dependencies
-FROM eclipse-temurin:17-jre
+# Using runtime JRE 21 with all required dependencies
+FROM eclipse-temurin:21-jre
 ENV APP_HOME=/opt/structurizr \
     LANG=C.UTF-8 \
     JAVA_OPTS=""

@@ -1,5 +1,29 @@
 # Docker Build & Usage
 
+## Java Version Requirements
+
+This project is designed for **Java 21** and uses modern Java features. The Docker images and build process are optimized for Java 21.
+
+### Setting Up Java 21 Environment
+
+If you encounter build issues, ensure Java 21 is properly configured:
+
+```bash
+# Switch to Java 21 (Linux/Ubuntu)
+sudo update-alternatives --set java /usr/lib/jvm/temurin-21-jdk-amd64/bin/java
+sudo update-alternatives --set javac /usr/lib/jvm/temurin-21-jdk-amd64/bin/javac
+
+# Set JAVA_HOME environment variable
+export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64
+
+# Verify Java version
+java -version  # Should show OpenJDK 21.x.x
+```
+
+For other operating systems:
+- **macOS**: Use `brew install openjdk@21` and configure JAVA_HOME
+- **Windows**: Download from [Adoptium](https://adoptium.net/) and set environment variables
+
 ## Building the Docker Image
 
 The project includes a convenient build script that handles both the Java compilation and Docker image creation:
@@ -64,4 +88,16 @@ The Docker image follows best practices for minimal size:
 - Proper cleanup of apt cache and temporary files
 - Efficient build context with `.dockerignore`
 
-Final image size: ~1.05GB (includes Java runtime and all Playwright dependencies)
+Final image size: ~1.05GB (includes Java 21 runtime and all Playwright dependencies)
+
+## Troubleshooting
+
+### Java Version Issues
+If you encounter compilation errors about Java version:
+
+1. **Verify Java 21 is installed**: `java -version`
+2. **Set JAVA_HOME properly**: `export JAVA_HOME=/path/to/java21`
+3. **Update alternatives (Linux)**: Use `update-alternatives` as shown above
+4. **Clean and rebuild**: `mvn clean install`
+
+The project requires Java 21 features and will not compile with older Java versions.
