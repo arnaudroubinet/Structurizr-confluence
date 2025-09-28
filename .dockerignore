@@ -1,4 +1,5 @@
-target
+target/
+!target/quarkus-app/
 node_modules
 .git
 .github
