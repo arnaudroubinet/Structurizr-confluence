@@ -4,6 +4,7 @@ import com.structurizr.Workspace;
 import com.structurizr.confluence.ConfluenceExporter;
 import com.structurizr.confluence.client.ConfluenceConfig;
 import com.structurizr.confluence.client.StructurizrConfig;
+import com.structurizr.confluence.util.SslTrustUtils;
 import com.structurizr.util.WorkspaceUtils;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
@@ -128,11 +129,24 @@ public class ExportCommand implements Runnable {
     )
     boolean force;
 
+    @CommandLine.Option(
+        names = {"--disable-ssl-verification"}, 
+        description = "Disable SSL certificate verification (useful for self-signed certificates)",
+        defaultValue = "false"
+    )
+    boolean disableSslVerification;
+
     @Override
     public void run() {
         try {
             // Load configuration from environment variables if not provided
             loadConfigurationFromEnvironment();
+            
+            // Configure SSL trust settings if needed
+            if (disableSslVerification) {
+                System.setProperty("disable.ssl.verification", "true");
+                logger.warn("SSL certificate verification disabled via command line option");
+            }
             
             // Validate configuration
             if (!validateConfiguration()) {
