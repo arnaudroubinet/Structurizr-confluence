@@ -3,6 +3,7 @@ package com.structurizr.confluence.processor;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.WaitForSelectorState;
 import com.structurizr.Workspace;
+import com.structurizr.confluence.util.SslTrustUtils;
 import com.structurizr.view.View;
 import com.structurizr.view.ViewSet;
 import org.slf4j.Logger;
@@ -90,7 +91,17 @@ public class DiagramExporter {
                 .setHeadless(true)
                 .setArgs(List.of("--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage")));
             
-            BrowserContext context = browser.newContext();
+            BrowserContext context;
+            
+            // Configure to ignore HTTPS errors if SSL verification is disabled
+            if (SslTrustUtils.shouldDisableSslVerification()) {
+                context = browser.newContext(new Browser.NewContextOptions()
+                    .setIgnoreHTTPSErrors(true));
+                logger.warn("HTTPS certificate errors will be ignored in Playwright browser context");
+            } else {
+                context = browser.newContext();
+            }
+            
             Page page = context.newPage();
             
             // Sign in if credentials provided

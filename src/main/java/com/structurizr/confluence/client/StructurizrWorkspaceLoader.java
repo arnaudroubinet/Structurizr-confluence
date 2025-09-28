@@ -3,6 +3,7 @@ package com.structurizr.confluence.client;
 import com.structurizr.Workspace;
 import com.structurizr.api.StructurizrClient;
 import com.structurizr.api.StructurizrClientException;
+import com.structurizr.confluence.util.SslTrustUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,6 +19,12 @@ public class StructurizrWorkspaceLoader {
     
     public StructurizrWorkspaceLoader(StructurizrConfig config) throws StructurizrClientException {
         this.config = config;
+        
+        // Configure SSL trust settings if needed
+        if (SslTrustUtils.shouldDisableSslVerification()) {
+            logger.warn("SSL certificate verification disabled for Structurizr client connections");
+            SslTrustUtils.installTrustAllSslContext();
+        }
         
         // Create StructurizrClient with API URL, key, and secret
         if (config.getApiUrl() != null && !config.getApiUrl().isEmpty()) {

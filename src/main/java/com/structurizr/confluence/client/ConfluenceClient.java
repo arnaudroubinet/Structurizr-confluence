@@ -2,12 +2,14 @@ package com.structurizr.confluence.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.structurizr.confluence.util.SslTrustUtils;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.inject.Vetoed;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -33,6 +35,20 @@ public class ConfluenceClient {
         this.config = config;
         this.objectMapper = new ObjectMapper();
         RestClientBuilder builder = createRestClientBuilder();
+        
+        // Configure SSL trust settings if needed
+        if (SslTrustUtils.shouldDisableSslVerification()) {
+            try {
+                SSLContext trustAllSslContext = SslTrustUtils.createTrustAllSslContext();
+                builder.sslContext(trustAllSslContext);
+                builder.hostnameVerifier(SslTrustUtils.createTrustAllHostnameVerifier());
+                logger.warn("SSL certificate verification disabled for Confluence REST client");
+            } catch (Exception e) {
+                logger.error("Failed to configure SSL trust settings for REST client", e);
+                throw new RuntimeException("SSL configuration failed", e);
+            }
+        }
+        
         this.api = builder
             .baseUri(normalizeBaseUri(config.getBaseUrl()))
             .register(new AuthHeadersFilter(config.getUsername(), config.getApiToken()))
@@ -408,7 +424,9 @@ public class ConfluenceClient {
                 .POST(HttpRequest.BodyPublishers.ofByteArray(multipart))
                 .build();
 
-            var client = HttpClient.newHttpClient();
+            var client = SslTrustUtils.shouldDisableSslVerification() 
+                ? SslTrustUtils.createTrustAllHttpClient() 
+                : HttpClient.newHttpClient();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             String responseBody = response.body();
             if (response.statusCode() == 200) {
@@ -593,7 +611,9 @@ public class ConfluenceClient {
                 .header("User-Agent", "Structurizr-Confluence-Exporter/1.0")
                 .GET()
                 .build();
-            var client = HttpClient.newHttpClient();
+            var client = SslTrustUtils.shouldDisableSslVerification() 
+                ? SslTrustUtils.createTrustAllHttpClient() 
+                : HttpClient.newHttpClient();
             HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() == 200) {
                 byte[] content = response.body();
