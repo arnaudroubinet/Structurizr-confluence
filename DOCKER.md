@@ -57,7 +57,7 @@ The Docker image includes all necessary libraries for Playwright functionality:
 - Browser libraries: `libnss3`, `libnspr4`, `libatk-bridge2.0-0`
 - Display libraries: `libdrm2`, `libxss1`, `libxtst6`, `libxrandr2`
 - Audio: `libasound2t64`
-- Graphics: `libpangocairo-1.0-0`, `libatk1.0-0`, `libcairo-gobject2`
+- Graphics: `libpangocairo-1.0-0`, `libatk1.0-0`, `libcairo-gobject2`, `libgles2`
 - UI libraries: `libgtk-3-0`, `libgdk-pixbuf2.0-0`, `libxcomposite1`
 
 ### Additional Required Libraries
