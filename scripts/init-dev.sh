@@ -79,24 +79,4 @@ else
   echo "[init-dev] 'apt-get' introuvable. Ignorer l'installation des paquets système."
 fi
 
-# Installer les dépendances Node si package.json est présent (Puppeteer/Playwright etc.)
-if [ -f "$ROOT_DIR/package.json" ]; then
-  echo "[init-dev] Installation des dépendances Node (npm)..."
-  pushd "$ROOT_DIR" >/dev/null
-  if command -v npm >/dev/null 2>&1; then
-    if [ -f package-lock.json ]; then
-      npm ci
-    else
-      npm install
-    fi
-    # S'assure que le binaire Chrome de Puppeteer est disponible (meilleure robustesse)
-    if command -v npx >/dev/null 2>&1; then
-      npx --yes @puppeteer/browsers install chrome@stable || true
-    fi
-  else
-    echo "[init-dev] npm non disponible dans l'environnement, étape ignorée."
-  fi
-  popd >/dev/null
-fi
-
 echo "[init-dev] Terminé."
