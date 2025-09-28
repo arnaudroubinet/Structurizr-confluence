@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo-gobject2 \
     libgtk-3-0 \
     libgdk-pixbuf2.0-0 \
+    libgles2 \
     libxcomposite1 \
     libxcursor1 \
     libxdamage1 \
