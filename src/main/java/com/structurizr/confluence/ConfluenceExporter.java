@@ -100,11 +100,13 @@ public class ConfluenceExporter {
         }
 
         try {
-            logger.info("Exporting diagrams using Puppeteer script...");
+            logger.info("Exporting diagrams using Playwright...");
             exportedDiagrams = diagramExporter.exportDiagrams(workspace);
             logger.info("Successfully exported {} diagrams", exportedDiagrams.size());
         } catch (Exception e) {
-            throw new IllegalStateException("Diagram export via Puppeteer failed. Stopping process.", e);
+            logger.warn("Diagram export failed, continuing without diagrams: {}", e.getMessage());
+            // Don't fail the entire process if diagram export fails
+            // throw new IllegalStateException("Diagram export via Playwright failed. Stopping process.", e);
         }
 
         this.exportedDiagrams = exportedDiagrams;
@@ -387,15 +389,6 @@ public class ConfluenceExporter {
         }
     }
     
-    private void exportViews(Workspace workspace, String parentPageId) throws Exception {
-        ViewSet views = workspace.getViews();
-        
-        exportViewCategory(views.getSystemLandscapeViews(), "System Landscape Views", parentPageId);
-        exportViewCategory(views.getSystemContextViews(), "System Context Views", parentPageId);
-        exportViewCategory(views.getContainerViews(), "Container Views", parentPageId);
-        exportViewCategory(views.getComponentViews(), "Component Views", parentPageId);
-        exportViewCategory(views.getDeploymentViews(), "Deployment Views", parentPageId);
-    }
 
     /**
      * Crée une seule page "Views" contenant toutes les vues (diagrammes) exportées.
@@ -463,29 +456,6 @@ public class ConfluenceExporter {
             }
         }
         return doc;
-    }
-    
-    private void exportViewCategory(Collection<? extends View> views, String categoryName, String parentPageId) throws Exception {
-        if (views.isEmpty()) {
-            return;
-        }
-        
-        // Create category page sans H1 (ne pas répéter le titre de page)
-        Document categoryDoc = Document.create();
-        
-        for (View view : views) {
-            categoryDoc.h2(view.getTitle());
-            
-            if (view.getDescription() != null && !view.getDescription().trim().isEmpty()) {
-                categoryDoc.paragraph(view.getDescription());
-            }
-            
-            // Add view properties
-            categoryDoc.paragraph("Key: " + view.getKey());
-        }
-        
-        confluenceClient.createOrUpdatePage(categoryName, convertDocumentToJson(categoryDoc), parentPageId);
-        logger.info("Created/updated page for {}", categoryName);
     }
     
     private void exportModel(Workspace workspace, String parentPageId) throws Exception {

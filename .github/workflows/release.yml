@@ -13,6 +13,12 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: 'maven'
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -22,18 +28,6 @@ jobs:
           TAG=${GITHUB_REF_NAME}
           VERSION=${TAG#v}
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Setup Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: 'maven'
-
-      - name: Install GraphViz
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y graphviz
 
       - name: Build with Maven
         run: mvn -B --no-transfer-progress clean package
