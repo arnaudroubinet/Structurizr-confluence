@@ -122,7 +122,9 @@ public class DiagramExporter {
             // Wait for Structurizr to load
             Frame structurizrFrame = findStructurizrFrame(page);
             if (structurizrFrame == null) {
-                throw new IOException("Could not find Structurizr frame after waiting");
+                throw new IOException("Could not find Structurizr frame after waiting 60 seconds. " +
+                    "This usually indicates that the Structurizr workspace is not loading properly. " +
+                    "Check that the workspace URL is correct and accessible: " + viewerUrl);
             }
             
             // Wait for diagrams to be rendered
@@ -236,16 +238,31 @@ public class DiagramExporter {
         int checkInterval = 500; // 0.5 seconds
         long startTime = System.currentTimeMillis();
         
+        logger.debug("Searching for Structurizr frame on page: {}", page.url());
+        
         while (System.currentTimeMillis() - startTime < maxWaitTime) {
-            for (Frame frame : page.frames()) {
+            List<Frame> frames = page.frames();
+            logger.debug("Found {} frames on page", frames.size());
+            
+            for (Frame frame : frames) {
                 try {
                     Object result = frame.evaluate("() => !!(window.structurizr && window.structurizr.scripting)");
                     if (Boolean.TRUE.equals(result)) {
                         logger.info("Found Structurizr frame");
                         return frame;
+                    } else {
+                        // Check what's available in the frame for debugging
+                        try {
+                            Object structurizrExists = frame.evaluate("() => !!window.structurizr");
+                            Object scriptingExists = frame.evaluate("() => !!(window.structurizr && window.structurizr.scripting)");
+                            logger.debug("Frame {}: structurizr={}, scripting={}", frame.url(), structurizrExists, scriptingExists);
+                        } catch (Exception debugException) {
+                            logger.debug("Frame {} evaluation failed: {}", frame.url(), debugException.getMessage());
+                        }
                     }
                 } catch (Exception ignored) {
                     // Frame might not be ready yet
+                    logger.debug("Frame evaluation failed for {}: {}", frame.url(), ignored.getMessage());
                 }
             }
             
@@ -254,6 +271,20 @@ public class DiagramExporter {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
+            }
+        }
+        
+        // Provide detailed diagnostics when frame is not found
+        logger.warn("Could not find Structurizr frame after {} seconds. Page URL: {}", maxWaitTime / 1000, page.url());
+        List<Frame> finalFrames = page.frames();
+        logger.warn("Final state: {} frames found", finalFrames.size());
+        for (int i = 0; i < finalFrames.size(); i++) {
+            Frame frame = finalFrames.get(i);
+            try {
+                String title = (String) frame.evaluate("() => document.title || 'No title'");
+                logger.warn("Frame {}: URL={}, Title={}", i, frame.url(), title);
+            } catch (Exception e) {
+                logger.warn("Frame {}: URL={}, Error getting title: {}", i, frame.url(), e.getMessage());
             }
         }
         
