@@ -55,6 +55,23 @@ To find Atlassian (Confluence, ADF, REST API) documentation using Context7:
 - **Playwright browsers**: Automatically installed during build for diagram export
 
 ### Setting Java 21
+
+If Java 21 is not available on your system, install it using SDKMAN:
+
+```bash
+# Install SDKMAN if not already installed
+curl -s "https://get.sdkman.io" | bash
+source "$HOME/.sdkman/bin/sdkman-init.sh"
+
+# Install Java 21 (Temurin distribution)
+sdk install java 21.0.8-tem
+sdk use java 21.0.8-tem
+
+# Verify installation
+java -version
+```
+
+For systems with Java 21 already installed, set the environment variables:
 ```bash
 export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64
 export PATH=$JAVA_HOME/bin:$PATH
