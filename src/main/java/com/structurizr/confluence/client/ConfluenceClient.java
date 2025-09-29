@@ -112,7 +112,15 @@ public class ConfluenceClient {
                 return responseJson.get("results").get(0).get("id").asText();
             }
         } catch (Exception e) {
-            throw new IOException("Failed to query Confluence content by title", e);
+            // Check if this is a 404 error (page not found) which is expected when page doesn't exist
+            String errorMessage = e.getMessage();
+            if (errorMessage != null && (errorMessage.contains("404") || errorMessage.contains("Not Found"))) {
+                logger.debug("Page '{}' not found in space '{}' (404 response - this may be expected)", title, config.getSpaceKey());
+                return null; // Return null for 404 instead of throwing exception
+            }
+            // For other errors, provide more context
+            throw new IOException("Failed to query Confluence content by title '" + title + 
+                "' in space '" + config.getSpaceKey() + "': " + errorMessage, e);
         }
         return null;
     }
