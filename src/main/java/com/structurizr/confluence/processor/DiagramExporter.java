@@ -127,7 +127,7 @@ public class DiagramExporter {
             
             // Wait for diagrams to be rendered
             structurizrFrame.waitForFunction("() => window.structurizr && window.structurizr.scripting && window.structurizr.scripting.isDiagramRendered && window.structurizr.scripting.isDiagramRendered() === true", 
-                new Frame.WaitForFunctionOptions().setTimeout(60000));
+                null, new Frame.WaitForFunctionOptions().setTimeout(60000));
             
             // Get views from Structurizr
             Object viewsResult = structurizrFrame.evaluate("() => window.structurizr.scripting.getViews()");
@@ -217,7 +217,7 @@ public class DiagramExporter {
                 
                 // Wait for redirect away from signin
                 page.waitForFunction("() => !location.pathname.includes('/signin')", 
-                    new Page.WaitForFunctionOptions().setTimeout(20000));
+                    null, new Page.WaitForFunctionOptions().setTimeout(20000));
                 
             } catch (Exception e) {
                 logger.warn("Authentication might have failed: {}", e.getMessage());
