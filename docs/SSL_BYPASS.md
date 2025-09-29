@@ -46,6 +46,16 @@ When SSL verification is disabled, the following components are configured to tr
 3. **Structurizr Client** - Workspace loading from Structurizr
 4. **Playwright Browser** - Diagram export from Structurizr web UI
 
+## Technical Implementation
+
+The SSL bypass is implemented using Quarkus-compatible SSL configuration:
+
+- **Global SSL Context**: The application installs a trust-all SSL context globally for the JVM when SSL verification is disabled
+- **REST Client Configuration**: Uses Quarkus TLS configuration approach instead of deprecated direct SSLContext assignment
+- **Compatibility**: Works with both RESTEasy and SmallRye REST client implementations
+
+> **Note**: In Quarkus 3.x, the `RestClientBuilder.sslContext()` method is no longer supported. This application uses the global SSL context approach for maximum compatibility.
+
 ## Security Warning
 
 ⚠️ **WARNING**: Disabling SSL certificate verification should only be used:
