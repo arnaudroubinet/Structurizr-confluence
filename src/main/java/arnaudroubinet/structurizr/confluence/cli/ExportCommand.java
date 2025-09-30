@@ -96,8 +96,8 @@ public class ExportCommand implements Runnable {
 
     @CommandLine.Option(
         names = {"-b", "--branch"}, 
-        description = "Branch name for versioning",
-        defaultValue = "main"
+        description = "Branch name for versioning (required)",
+        required = true
     )
     String branchName;
 
@@ -117,10 +117,10 @@ public class ExportCommand implements Runnable {
 
     @CommandLine.Option(
         names = {"--page-id"}, 
-        description = "Target page ID for cleaning (overrides branch-based target)",
-        required = false
+        description = "Parent page ID where branch subpage will be created (required)",
+        required = true
     )
-    String cleanPageId;
+    String pageId;
 
     @CommandLine.Option(
         names = {"-f", "--force"}, 
@@ -167,8 +167,8 @@ public class ExportCommand implements Runnable {
             }
 
             // Validate page targeting parameters
-            if (cleanPageTitle != null && cleanPageId != null) {
-                System.err.println("❌ Error: Cannot specify both --page-title and --page-id");
+            if (cleanPageTitle != null && pageId != null) {
+                System.err.println("❌ Error: Cannot specify both --page-title and --page-id for cleaning");
                 System.exit(1);
                 return;
             }
@@ -217,8 +217,8 @@ public class ExportCommand implements Runnable {
 
             // Clean target page tree if requested
             if (cleanSpace) {
-                String targetPageTitle = cleanPageTitle != null ? cleanPageTitle : branchName;
-                String targetPageId = cleanPageId;
+                String targetPageTitle = cleanPageTitle;
+                String targetPageId = cleanPageTitle != null ? null : pageId;
                 
                 // Ask for confirmation unless force flag is used
                 if (!force) {
@@ -240,11 +240,11 @@ public class ExportCommand implements Runnable {
             }
 
             // Export workspace
-            logger.info("Starting workspace export...");
+            logger.info("Starting workspace export with parent page ID: {} and branch: {}", pageId, branchName);
             if (workspace != null) {
-                exporter.export(workspace, branchName);
+                exporter.export(workspace, pageId, branchName);
             } else {
-                exporter.exportFromStructurizr();
+                exporter.exportFromStructurizr(pageId, branchName);
             }
             logger.info("Export completed successfully!");
 
@@ -365,9 +365,9 @@ public class ExportCommand implements Runnable {
             }
         }
 
-        // Space is required for normal export operations unless using page-id for cleaning only
-        if (confluenceSpaceKey == null && cleanPageId == null) {
-            System.err.println("❌ Error: --confluence-space is required (or set CONFLUENCE_SPACE_KEY environment variable, except when using --page-id for cleaning only)");
+        // Space is required for normal export operations unless using page-id which can work without space
+        if (confluenceSpaceKey == null && pageId == null) {
+            System.err.println("❌ Error: --confluence-space is required (or set CONFLUENCE_SPACE_KEY environment variable)");
             return false;
         }
 
@@ -386,6 +386,7 @@ public class ExportCommand implements Runnable {
         if (confluenceSpaceKey != null) {
             logger.info("Confluence space: {}", confluenceSpaceKey);
         }
+        logger.info("Parent page ID: {}", pageId);
         logger.info("Branch: {}", branchName);
     }
 

@@ -82,6 +82,22 @@ public class ConfluenceExporter {
     }
     
     /**
+     * Exports a workspace loaded from the configured Structurizr instance to a specific parent page.
+     * 
+     * @param parentPageId the parent page ID
+     * @param branchName the branch name
+     * @throws Exception if export fails
+     */
+    public void exportFromStructurizr(String parentPageId, String branchName) throws Exception {
+        if (workspaceLoader == null) {
+            throw new IllegalStateException("No Structurizr configuration provided. Use the constructor with StructurizrConfig or call export(Workspace) directly.");
+        }
+        
+        Workspace workspace = workspaceLoader.loadWorkspace();
+        export(workspace, parentPageId, branchName);
+    }
+    
+    /**
      * Exports the given workspace to Confluence Cloud.
      * 
      * @param workspace the workspace to export
@@ -261,6 +277,148 @@ public class ConfluenceExporter {
     }
     
     /**
+     * Exports the given workspace to Confluence Cloud with a specific parent page.
+     * 
+     * @param workspace the workspace to export
+     * @param parentPageId the parent page ID where a branch subpage will be created
+     * @param branchName the branch name
+     * @throws Exception if export fails
+     */
+    public void export(Workspace workspace, String parentPageId, String branchName) throws Exception {
+        logger.info("Starting export of workspace '{}' to parent page ID '{}' with branch '{}'", 
+            workspace.getName(), parentPageId, branchName);
+
+        // Check if parent page exists
+        if (!confluenceClient.pageExists(parentPageId)) {
+            logger.info("Parent page with ID '{}' does not exist, creating it...", parentPageId);
+            // Create the parent page with minimal content
+            Document parentDoc = Document.create()
+                .paragraph("This is the root page for Structurizr workspace documentation.");
+            String createdPageId = confluenceClient.createOrUpdatePage(
+                "Structurizr Workspace",
+                convertDocumentToJson(parentDoc)
+            );
+            logger.info("Created parent page with ID: {}", createdPageId);
+        } else {
+            logger.info("Parent page with ID '{}' exists, will create branch subpage under it", parentPageId);
+        }
+
+        String workspaceId = getWorkspaceId(workspace);
+        DiagramExporter diagramExporter = DiagramExporter.fromEnvironment(workspaceId);
+        List<File> exportedDiagrams = null;
+
+        if (diagramExporter == null) {
+            throw new IllegalStateException("Diagram export via Puppeteer is required but environment variables are not configured. Please define STRUCTURIZR_URL, STRUCTURIZR_USERNAME and STRUCTURIZR_PASSWORD.");
+        }
+
+        try {
+            logger.info("Exporting diagrams using Playwright...");
+            exportedDiagrams = diagramExporter.exportDiagrams(workspace);
+            logger.info("Successfully exported {} diagrams", exportedDiagrams.size());
+        } catch (Exception e) {
+            logger.warn("Diagram export failed, continuing without diagrams: {}", e.getMessage());
+        }
+
+        this.exportedDiagrams = exportedDiagrams;
+        
+        if (exportedDiagrams != null) {
+            Function<String, File> diagramResolver = this::getDiagramFile;
+            asciiDocConverter.setDiagramResolver(diagramResolver);
+            htmlToAdfConverter.setDiagramResolver(diagramResolver);
+            logger.info("Configured converters to use {} local diagram files", exportedDiagrams.size());
+        }
+
+        // Create branch subpage under parent page
+        String branchPageTitle = branchName;
+        Document branchDoc = generateWorkspaceDocumentation(workspace, branchName);
+        String branchPageId = confluenceClient.createOrUpdatePage(
+            branchPageTitle,
+            convertDocumentToJson(branchDoc),
+            parentPageId
+        );
+        logger.info("Branch page created/updated with ID: {} under parent: {}", branchPageId, parentPageId);
+
+        // Create Documentation page under branch page with branch suffix
+        String documentationPageTitle = "Documentation - " + branchName;
+        String documentationPageId = confluenceClient.createOrUpdatePage(
+            documentationPageTitle,
+            "{\"version\":1,\"type\":\"doc\",\"content\":[]}",
+            branchPageId
+        );
+        logger.info("Documentation page created/updated with ID: {}", documentationPageId);
+
+        // Configure image upload for Documentation page
+        ImageUploadManager docImageUploadManager = new ImageUploadManager(confluenceClient);
+        htmlToAdfConverter.setImageUploadManager(docImageUploadManager);
+        htmlToAdfConverter.setCurrentPageId(documentationPageId);
+
+        Document documentationDoc = Document.create();
+
+        String documentationJson = convertDocumentToJson(documentationDoc);
+        ObjectNode documentationNode = objectMapper.readTree(documentationJson) instanceof ObjectNode
+            ? (ObjectNode) objectMapper.readTree(documentationJson)
+            : objectMapper.createObjectNode();
+        ArrayNode docContent = documentationNode.has("content") && documentationNode.get("content").isArray()
+            ? (ArrayNode) documentationNode.get("content")
+            : documentationNode.putArray("content");
+
+        // Add TOC macro
+        ObjectNode tocNode = objectMapper.createObjectNode();
+        tocNode.put("type", "extension");
+        ObjectNode extAttrs = objectMapper.createObjectNode();
+        extAttrs.put("extensionType", "com.atlassian.confluence.macro.core");
+        extAttrs.put("extensionKey", "toc");
+        tocNode.set("attrs", extAttrs);
+        docContent.add(tocNode);
+
+        if (workspace.getDocumentation() != null && !workspace.getDocumentation().getSections().isEmpty()) {
+            for (com.structurizr.documentation.Section section : workspace.getDocumentation().getSections()) {
+                String filenameFallback = section.getFilename();
+                String content = section.getContent();
+
+                String htmlContent;
+                String formatName = section.getFormat() != null ? section.getFormat().name() : "";
+                if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
+                    String workspaceId2 = getWorkspaceId(workspace);
+                    htmlContent = asciiDocConverter.convertToHtml(content, filenameFallback, workspaceId2, branchName);
+                } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
+                    htmlContent = markdownConverter.toHtml(content);
+                } else {
+                    htmlContent = content;
+                }
+
+                htmlToAdfConverter.extractPageTitleOnly(htmlContent);
+
+                String sectionAdfJson = htmlToAdfConverter.convertToAdfJson(htmlContent, filenameFallback);
+                ObjectNode sectionDocNode = objectMapper.readTree(sectionAdfJson) instanceof ObjectNode
+                    ? (ObjectNode) objectMapper.readTree(sectionAdfJson)
+                    : objectMapper.createObjectNode();
+                JsonNode sectionContent = sectionDocNode.get("content");
+                if (sectionContent != null && sectionContent.isArray()) {
+                    for (JsonNode child : sectionContent) {
+                        docContent.add(child);
+                    }
+                }
+            }
+        }
+
+        String finalDocumentationJson = objectMapper.writeValueAsString(documentationNode);
+        confluenceClient.updatePageById(documentationPageId, documentationPageTitle, finalDocumentationJson);
+        logger.info("Documentation page content updated (ID: {})", documentationPageId);
+
+        // Create Views page under branch page with branch suffix
+        exportAllViewsSinglePage(workspace, branchPageId, branchName);
+
+        // Create Model page under branch page with branch suffix
+        exportModel(workspace, branchPageId, branchName);
+
+        // Create ADRs under branch page with branch suffix
+        exportDecisions(workspace, branchPageId, branchName);
+
+        logger.info("Workspace export completed successfully");
+    }
+    
+    /**
      * Processes and exports AsciiDoc documentation with diagram injection.
      * 
      * @param workspace the workspace context
@@ -422,6 +580,42 @@ public class ConfluenceExporter {
         confluenceClient.updatePageById(viewsPageId, "Views", convertDocumentToJson(viewsDoc));
         logger.info("Created/updated single Views page with all diagrams (pageId: {})", viewsPageId);
     }
+    
+    /**
+     * Crée une seule page "Views" contenant toutes les vues (diagrammes) exportées.
+     * Version avec support du branchName.
+     * 
+     * @param workspace the workspace
+     * @param parentPageId the parent page ID
+     * @param branchName branch name to add as suffix to page title
+     */
+    private void exportAllViewsSinglePage(Workspace workspace, String parentPageId, String branchName) throws Exception {
+        ViewSet views = workspace.getViews();
+
+        String viewsPageTitle = "Views - " + branchName;
+        String viewsPageId = confluenceClient.createOrUpdatePage(
+            viewsPageTitle,
+            "{\"version\":1,\"type\":\"doc\",\"content\":[]}",
+            parentPageId
+        );
+
+        // Configurer l'uploader d'images et le contexte de page
+        ImageUploadManager imageUploadManager = new ImageUploadManager(confluenceClient);
+        htmlToAdfConverter.setImageUploadManager(imageUploadManager);
+        htmlToAdfConverter.setCurrentPageId(viewsPageId);
+
+        // Construire le contenu ADF de la page "Views"
+        Document viewsDoc = Document.create();
+
+        viewsDoc = addViewsWithImages(viewsDoc, views.getSystemLandscapeViews(), "System Landscape Views");
+        viewsDoc = addViewsWithImages(viewsDoc, views.getSystemContextViews(), "System Context Views");
+        viewsDoc = addViewsWithImages(viewsDoc, views.getContainerViews(), "Container Views");
+        viewsDoc = addViewsWithImages(viewsDoc, views.getComponentViews(), "Component Views");
+        viewsDoc = addViewsWithImages(viewsDoc, views.getDeploymentViews(), "Deployment Views");
+
+        confluenceClient.updatePageById(viewsPageId, viewsPageTitle, convertDocumentToJson(viewsDoc));
+        logger.info("Created/updated Views page with branch suffix (pageId: {})", viewsPageId);
+    }
 
     /**
      * Ajoute au document fourni toutes les vues d’une catégorie avec l’image de diagramme correspondante.
@@ -504,6 +698,55 @@ public class ConfluenceExporter {
         logger.info("Created/updated model documentation page");
     }
     
+    /**
+     * Exports model documentation with branch suffix.
+     */
+    private void exportModel(Workspace workspace, String parentPageId, String branchName) throws Exception {
+        Model model = workspace.getModel();
+        
+        Document modelDoc = Document.create();
+        
+        // People
+        if (!model.getPeople().isEmpty()) {
+            modelDoc.h2("People");
+            
+            for (Person person : model.getPeople()) {
+                addElementDocumentation(modelDoc, person);
+            }
+        }
+        
+        // Software Systems
+        if (!model.getSoftwareSystems().isEmpty()) {
+            modelDoc.h2("Software Systems");
+            
+            for (SoftwareSystem softwareSystem : model.getSoftwareSystems()) {
+                addElementDocumentation(modelDoc, softwareSystem);
+                
+                // Containers
+                if (!softwareSystem.getContainers().isEmpty()) {
+                    modelDoc.h4("Containers");
+                    
+                    for (Container container : softwareSystem.getContainers()) {
+                        addElementDocumentation(modelDoc, container);
+                        
+                        // Components
+                        if (!container.getComponents().isEmpty()) {
+                            modelDoc.h5("Components");
+                            
+                            for (Component component : container.getComponents()) {
+                                addElementDocumentation(modelDoc, component);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        String modelPageTitle = "Model Documentation - " + branchName;
+        confluenceClient.createOrUpdatePage(modelPageTitle, convertDocumentToJson(modelDoc), parentPageId);
+        logger.info("Created/updated model documentation page with branch suffix");
+    }
+    
     private void addElementDocumentation(Document doc, Element element) {
         doc.h3(element.getName());
         
@@ -549,8 +792,9 @@ public class ConfluenceExporter {
         Document adrMainDoc = Document.create()
             .paragraph("This page contains all architecture decision records for this project.");
         
+        String adrMainPageTitle = "Architecture Decision Records - " + branchName;
         String adrMainPageId = confluenceClient.createOrUpdatePage(
-            "Architecture Decision Records", 
+            adrMainPageTitle, 
             convertDocumentToJson(adrMainDoc), 
             parentPageId
         );

@@ -78,13 +78,41 @@ When the application runs for the first time, if browsers are not pre-installed,
 # Show help
 docker run --rm structurizr-confluence:latest --help
 
-# Export a workspace
+# Export a workspace (note: --page-id and --branch are now required)
 docker run --rm \
   -e CONFLUENCE_URL=https://your-domain.atlassian.net \
   -e CONFLUENCE_USER=your-email@domain.com \
   -e CONFLUENCE_TOKEN=your-api-token \
   -e CONFLUENCE_SPACE_KEY=YOUR_SPACE \
-  structurizr-confluence:latest export --workspace-id 123
+  structurizr-confluence:latest export \
+    --workspace-id 123 \
+    --page-id "parent-page-id" \
+    --branch "main"
+
+# Export with workspace file
+docker run --rm \
+  -v /path/to/workspace.json:/workspace.json \
+  -e CONFLUENCE_URL=https://your-domain.atlassian.net \
+  -e CONFLUENCE_USER=your-email@domain.com \
+  -e CONFLUENCE_TOKEN=your-api-token \
+  structurizr-confluence:latest export \
+    --workspace-file /workspace.json \
+    --page-id "123456" \
+    --branch "feature/new-architecture"
+```
+
+**Required Parameters:**
+- `--page-id`: The ID of the parent page where a branch subpage will be created
+- `--branch`: The branch name used for the subpage and page title suffixes
+
+**Page Hierarchy Created:**
+```
+Parent Page (--page-id)
+└── Branch Subpage (--branch name)
+    ├── Documentation - {branch}
+    ├── Views - {branch}
+    ├── Model Documentation - {branch}
+    └── Architecture Decision Records - {branch}
 ```
 
 ## Image Optimization
