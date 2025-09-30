@@ -687,34 +687,6 @@ public class ConfluenceExporter {
         return nameWithoutExt.substring(secondDash + 1);
     }
 
-    /**
-     * Adds diagram images from a view category to the document.
-     * Only includes the diagram images without any text, titles, or descriptions.
-     */
-    private Document addViewsWithImages(Document doc, Collection<? extends View> views, String categoryTitle) {
-        if (views == null || views.isEmpty()) {
-            return doc;
-        }
-
-        for (View view : views) {
-            String viewTitle = view.getTitle();
-            if (viewTitle == null || viewTitle.trim().isEmpty()) {
-                viewTitle = view.getKey() != null ? view.getKey() : "Untitled View";
-            }
-
-            // Insérer l’image du diagramme via placeholder local:diagram:KEY pour déclencher l’upload
-            // Only the image, no titles or descriptions
-            try {
-                String imgHtml = "<p><img src=\"local:diagram:" + view.getKey() + "\" alt=\"" + viewTitle + "\"></p><p>&nbsp;</p>";
-                Document imgDoc = htmlToAdfConverter.convertToAdf(imgHtml, viewTitle);
-                doc = combineDocuments(doc, imgDoc);
-            } catch (Exception e) {
-                logger.warn("Failed to embed image for view {} via local placeholder", view.getKey(), e);
-            }
-        }
-        return doc;
-    }
-    
     
     private void exportDecisions(Workspace workspace, String parentPageId, String branchName) throws Exception {
         if (workspace.getDocumentation() == null || workspace.getDocumentation().getDecisions().isEmpty()) {
