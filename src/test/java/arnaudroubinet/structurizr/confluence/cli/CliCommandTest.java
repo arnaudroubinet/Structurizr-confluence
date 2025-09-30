@@ -104,22 +104,23 @@ class CliCommandTest {
         
         // Test page title targeting for clean
         exportCommand.cleanPageTitle = "Custom Target Page";
-        exportCommand.cleanPageId = null;
+        exportCommand.pageId = "123456"; // pageId is now required
         exportCommand.cleanSpace = true;
         exportCommand.confluenceSpaceKey = "TEST";
         exportCommand.workspaceFile = new File("demo/itms-workspace.json");
+        exportCommand.branchName = "main";
         
         assertEquals("Custom Target Page", exportCommand.cleanPageTitle);
-        assertNull(exportCommand.cleanPageId);
+        assertEquals("123456", exportCommand.pageId);
         assertTrue(exportCommand.cleanSpace);
         
-        // Test page ID targeting for clean
+        // Test page ID targeting
         exportCommand.cleanPageTitle = null;
-        exportCommand.cleanPageId = "789012";
-        exportCommand.confluenceSpaceKey = null; // Space not required for page ID
+        exportCommand.pageId = "789012";
+        exportCommand.confluenceSpaceKey = null; // Space not required when using page ID
         
         assertNull(exportCommand.cleanPageTitle);
-        assertEquals("789012", exportCommand.cleanPageId);
+        assertEquals("789012", exportCommand.pageId);
         
         logger.info("✅ Export command supports both page title and page ID targeting");
     }
