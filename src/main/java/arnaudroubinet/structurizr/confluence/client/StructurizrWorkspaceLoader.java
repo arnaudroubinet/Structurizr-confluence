@@ -40,9 +40,15 @@ public class StructurizrWorkspaceLoader {
         
         // Create StructurizrClient with API URL, key, and secret
         if (config.getApiUrl() != null && !config.getApiUrl().isEmpty()) {
-            this.client = new StructurizrClient(config.getApiUrl(), config.getApiKey(), config.getApiSecret());
+            // Append /api to the URL for StructurizrClient API calls
+            String apiUrl = config.getApiUrl();
+            if (!apiUrl.endsWith("/api") && !apiUrl.endsWith("/api/")) {
+                apiUrl = apiUrl.endsWith("/") ? apiUrl + "api" : apiUrl + "/api";
+            }
+            
+            this.client = new StructurizrClient(apiUrl, config.getApiKey(), config.getApiSecret());
             if (config.isDebugMode()) {
-                logger.debug("Created StructurizrClient for API URL: {}", config.getApiUrl());
+                logger.debug("Created StructurizrClient for API URL: {}", apiUrl);
             }
         } else {
             // Use default Structurizr cloud URL if no API URL provided
@@ -111,28 +117,6 @@ public class StructurizrWorkspaceLoader {
             if (config.isDebugMode()) {
                 logger.debug("Debug mode: HTTP request failed after {} ms", System.currentTimeMillis() - startTime);
                 logger.debug("Debug mode: Exception details: {}", e.getMessage(), e);
-            }
-            
-            // Check if the error is related to JSON parsing (indicates HTML response, likely an auth issue)
-            if (e.getMessage() != null && e.getMessage().contains("Could not read JSON")) {
-                String enhancedMessage = "Failed to load workspace from Structurizr instance. " +
-                    "The server returned an HTML response instead of JSON, which typically indicates an authentication problem.\n\n" +
-                    "Possible causes:\n" +
-                    "1. The API key or secret may be incorrect\n" +
-                    "2. The workspace may require user authentication (the server redirected to a login page)\n" +
-                    "3. The workspace may not be accessible via the API with the provided credentials\n" +
-                    "4. The on-premise Structurizr instance may have authentication configured that requires additional setup\n\n" +
-                    "Please verify:\n" +
-                    "- Your API key and secret are correct\n" +
-                    "- The workspace exists and you have permission to access it\n" +
-                    "- The workspace has API access enabled\n" +
-                    "- If using on-premise Structurizr, check that API authentication is properly configured\n\n" +
-                    "Original error: " + e.getMessage();
-                
-                logger.error(enhancedMessage);
-                
-                // Wrap the exception with enhanced message in a RuntimeException that includes the cause
-                throw new RuntimeException(enhancedMessage, e);
             }
             
             throw e;
