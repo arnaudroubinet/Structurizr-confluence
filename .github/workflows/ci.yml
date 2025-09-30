@@ -31,7 +31,7 @@ jobs:
           echo "JAVA_HOME: $JAVA_HOME"
 
       - name: Install Playwright browsers with dependencies
-        run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+        run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps chromium"
 
       - name: Setup Docker for Testcontainers
         run: |

@@ -71,6 +71,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG BUILD_DIR=target
 COPY ${BUILD_DIR}/quarkus-app/ ./quarkus-app/
 
+# Install ONLY Chromium browser for Playwright
+# This prevents Playwright from auto-downloading all browsers (Chromium, Firefox, WebKit) on first run
+# Use all jars in lib/main for the classpath to ensure dependencies are available
+RUN java -cp "./quarkus-app/lib/main/*" com.microsoft.playwright.CLI install chromium && \
+    echo "✅ Installed Chromium browser for Playwright"
+
 # Default execution (Picocli CLI). Provide args at docker run time.
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /opt/structurizr/quarkus-app/quarkus-run.jar \"$@\"", "--"]
 # Optional default arguments

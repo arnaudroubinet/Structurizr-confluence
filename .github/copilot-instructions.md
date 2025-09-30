@@ -78,9 +78,18 @@ export PATH=$JAVA_HOME/bin:$PATH
 ```
 
 ### Installing Playwright Dependencies
+
+The application only uses Chromium for diagram export. **You must pre-install only Chromium** to prevent Playwright from automatically downloading all browsers when the application runs:
+
 ```bash
-mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps chromium"
 ```
+
+**⚠️ Important**: 
+- Playwright Java automatically downloads ALL browsers on first `Playwright.create()` if no browsers are installed
+- There is no environment variable to control which browsers are auto-downloaded
+- **You must run the install command above BEFORE running the application** to ensure only Chromium is installed
+- Once Chromium is installed, Playwright will not auto-download other browsers
 
 ## Build and Validation Instructions
 
