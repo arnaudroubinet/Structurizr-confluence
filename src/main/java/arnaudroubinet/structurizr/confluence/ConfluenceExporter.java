@@ -630,7 +630,7 @@ public class ConfluenceExporter {
             // Insérer l’image du diagramme via placeholder local:diagram:KEY pour déclencher l’upload
             // Only the image, no titles or descriptions
             try {
-                String imgHtml = "<p><img src=\"local:diagram:" + view.getKey() + "\" alt=\"" + viewTitle + "\"></p>";
+                String imgHtml = "<p><img src=\"local:diagram:" + view.getKey() + "\" alt=\"" + viewTitle + "\"></p><p>&nbsp;</p>";
                 Document imgDoc = htmlToAdfConverter.convertToAdf(imgHtml, viewTitle);
                 doc = combineDocuments(doc, imgDoc);
             } catch (Exception e) {
@@ -746,18 +746,29 @@ public class ConfluenceExporter {
             String filename = diagramFile.getName();
             logger.debug("Checking diagram file: {}", filename);
             
-            // Handle different filename patterns that might be used
+            // Expected format: structurizr-{workspaceId}-{viewKey}.png
+            // Extract the view key from the filename
+            if (filename.contains("-") && filename.contains(".")) {
+                // Get the part after the last dash and before the extension
+                int lastDashIndex = filename.lastIndexOf('-');
+                int extensionIndex = filename.lastIndexOf('.');
+                if (lastDashIndex > 0 && extensionIndex > lastDashIndex) {
+                    String extractedViewKey = filename.substring(lastDashIndex + 1, extensionIndex);
+                    if (extractedViewKey.equals(viewKey)) {
+                        logger.info("Found exact matching diagram file: {} for view key: {}", filename, viewKey);
+                        return diagramFile;
+                    }
+                }
+            }
+            
+            // Fallback: check if filename contains the view key (for backward compatibility)
             String fileViewKey = filename;
             if (filename.contains(".")) {
-                // Remove extension to get the view key
                 fileViewKey = filename.substring(0, filename.lastIndexOf('.'));
             }
             
-            // Check for exact match or partial match
-            if (fileViewKey.equals(viewKey) || 
-                fileViewKey.toLowerCase().contains(viewKey.toLowerCase()) ||
-                viewKey.toLowerCase().contains(fileViewKey.toLowerCase())) {
-                logger.info("Found matching diagram file: {} for view key: {}", filename, viewKey);
+            if (fileViewKey.toLowerCase().contains(viewKey.toLowerCase())) {
+                logger.info("Found matching diagram file (fallback): {} for view key: {}", filename, viewKey);
                 return diagramFile;
             }
         }
