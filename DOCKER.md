@@ -53,6 +53,11 @@ docker build -t structurizr-confluence:latest .
 
 The Docker image includes system libraries necessary for Playwright's Chromium browser. The application uses only Chromium for diagram export to minimize image size and dependencies.
 
+**⚠️ Important Note on Playwright Auto-Download:**
+When the application runs for the first time, if browsers are not pre-installed, Playwright Java automatically downloads ALL browsers (Chromium, Firefox, WebKit). To prevent this:
+1. The Dockerfile ensures only Chromium is installed during image build
+2. For local development, you must manually install only Chromium before running the app (see below)
+
 ### Core Playwright Dependencies
 - Browser libraries: `libnss3`, `libnspr4`, `libatk-bridge2.0-0`
 - Display libraries: `libdrm2`, `libxss1`, `libxtst6`, `libxrandr2`
