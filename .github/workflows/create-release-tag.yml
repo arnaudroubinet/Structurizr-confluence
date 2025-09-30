@@ -1,0 +1,85 @@
+name: Create Release Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.1.0)'
+        required: true
+        default: 'v1.1.0'
+      target:
+        description: 'Target branch or commit'
+        required: true
+        default: 'main'
+
+permissions:
+  contents: write
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target }}
+          fetch-depth: 0
+          
+      - name: Validate version format
+        run: |
+          if ! [[ "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must be in format vX.Y.Z (e.g., v1.1.0)"
+            exit 1
+          fi
+          
+      - name: Check if tag exists
+        run: |
+          if git rev-parse "${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "Error: Tag ${{ inputs.version }} already exists!"
+            exit 1
+          fi
+          
+      - name: Get latest tag
+        id: latest
+        run: |
+          LATEST=$(git tag -l 'v*.*.*' | sort -V | tail -n 1)
+          echo "tag=${LATEST}" >> $GITHUB_OUTPUT
+          echo "Latest tag: ${LATEST}"
+          
+      - name: Get changes since last tag
+        id: changes
+        run: |
+          CHANGES=$(git log --oneline ${{ steps.latest.outputs.tag }}..${{ inputs.target }} | head -20)
+          echo "Changes since ${{ steps.latest.outputs.tag }}:"
+          echo "$CHANGES"
+          
+          # Create multiline output
+          {
+            echo 'changelog<<EOF'
+            echo "$CHANGES"
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+          
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          VERSION="${{ inputs.version }}"
+          VERSION_NUM="${VERSION#v}"
+          
+          git tag -a "${VERSION}" -m "Release version ${VERSION_NUM}
+
+          Changes since ${{ steps.latest.outputs.tag }}:
+          ${{ steps.changes.outputs.changelog }}"
+          
+          git push origin "${VERSION}"
+          
+      - name: Summary
+        run: |
+          echo "✅ Release tag ${{ inputs.version }} created successfully!"
+          echo ""
+          echo "🔔 Next steps:"
+          echo "  1. Release workflow will automatically trigger"
+          echo "  2. Check: https://github.com/${{ github.repository }}/actions"
+          echo "  3. Release: https://github.com/${{ github.repository }}/releases/tag/${{ inputs.version }}"
