@@ -687,34 +687,6 @@ public class ConfluenceExporter {
         return nameWithoutExt.substring(secondDash + 1);
     }
 
-    /**
-     * Adds diagram images from a view category to the document.
-     * Only includes the diagram images without any text, titles, or descriptions.
-     */
-    private Document addViewsWithImages(Document doc, Collection<? extends View> views, String categoryTitle) {
-        if (views == null || views.isEmpty()) {
-            return doc;
-        }
-
-        for (View view : views) {
-            String viewTitle = view.getTitle();
-            if (viewTitle == null || viewTitle.trim().isEmpty()) {
-                viewTitle = view.getKey() != null ? view.getKey() : "Untitled View";
-            }
-
-            // Insérer l’image du diagramme via placeholder local:diagram:KEY pour déclencher l’upload
-            // Only the image, no titles or descriptions
-            try {
-                String imgHtml = "<p><img src=\"local:diagram:" + view.getKey() + "\" alt=\"" + viewTitle + "\"></p><p>&nbsp;</p>";
-                Document imgDoc = htmlToAdfConverter.convertToAdf(imgHtml, viewTitle);
-                doc = combineDocuments(doc, imgDoc);
-            } catch (Exception e) {
-                logger.warn("Failed to embed image for view {} via local placeholder", view.getKey(), e);
-            }
-        }
-        return doc;
-    }
-    
     
     private void exportDecisions(Workspace workspace, String parentPageId, String branchName) throws Exception {
         if (workspace.getDocumentation() == null || workspace.getDocumentation().getDecisions().isEmpty()) {
@@ -822,18 +794,11 @@ public class ConfluenceExporter {
             logger.debug("Checking diagram file: {}", filename);
             
             // Expected format: structurizr-{workspaceId}-{viewKey}.png
-            // Extract the view key from the filename
-            if (filename.contains("-") && filename.contains(".")) {
-                // Get the part after the last dash and before the extension
-                int lastDashIndex = filename.lastIndexOf('-');
-                int extensionIndex = filename.lastIndexOf('.');
-                if (lastDashIndex > 0 && extensionIndex > lastDashIndex) {
-                    String extractedViewKey = filename.substring(lastDashIndex + 1, extensionIndex);
-                    if (extractedViewKey.equals(viewKey)) {
-                        logger.info("Found exact matching diagram file: {} for view key: {}", filename, viewKey);
-                        return diagramFile;
-                    }
-                }
+            // Extract the view key using the same logic as extractViewKeyFromFilename
+            String extractedViewKey = extractViewKeyFromFilename(filename);
+            if (extractedViewKey != null && extractedViewKey.equals(viewKey)) {
+                logger.info("Found exact matching diagram file: {} for view key: {}", filename, viewKey);
+                return diagramFile;
             }
             
             // Fallback: check if filename contains the view key (for backward compatibility)
