@@ -33,7 +33,8 @@ public class StructurizrWorkspaceLoader {
             logger.info("Debug mode enabled - HTTP request/response logging will be detailed");
             // Enable HTTP wire logging for debugging
             // Apache HttpClient 5 (used by StructurizrClient/WorkspaceApiClient) uses SLF4J for logging
-            // We need to configure the underlying JUL (java.util.logging) loggers that back SLF4J in Quarkus
+            // In Quarkus, SLF4J is bridged to JBoss LogManager via slf4j-jboss-logmanager
+            // We configure the JUL loggers (which are managed by JBoss LogManager in Quarkus)
             enableHttpLogging();
         }
         
@@ -54,16 +55,27 @@ public class StructurizrWorkspaceLoader {
     
     /**
      * Enables HTTP logging for Apache HttpClient 5 used by StructurizrClient/WorkspaceApiClient.
-     * This configures the underlying java.util.logging loggers to show HTTP request/response details.
+     * 
+     * In Quarkus applications, logging is managed by JBoss LogManager which implements the
+     * java.util.logging (JUL) API. Apache HttpClient 5 uses SLF4J for logging, which is
+     * bridged to JBoss LogManager via slf4j-jboss-logmanager.
+     * 
+     * This method configures the underlying JUL loggers (which are actually JBoss LogManager
+     * loggers) to show HTTP request/response details at runtime when debug mode is enabled.
+     * 
+     * @see <a href="https://quarkus.io/guides/logging">Quarkus Logging Guide</a>
      */
     private void enableHttpLogging() {
         try {
             // Get the JUL loggers for Apache HttpClient 5
+            // Note: In Quarkus, java.util.logging.Logger.getLogger() returns
+            // org.jboss.logmanager.Logger instances which are managed by JBoss LogManager
             java.util.logging.Logger httpClientLogger = java.util.logging.Logger.getLogger("org.apache.hc.client5.http");
             java.util.logging.Logger wireLogger = java.util.logging.Logger.getLogger("org.apache.hc.client5.http.wire");
             java.util.logging.Logger headersLogger = java.util.logging.Logger.getLogger("org.apache.hc.client5.http.headers");
             
             // Set all to FINE (equivalent to DEBUG in SLF4J)
+            // These calls work with JBoss LogManager which manages the actual log levels
             httpClientLogger.setLevel(Level.FINE);
             wireLogger.setLevel(Level.FINE);
             headersLogger.setLevel(Level.FINE);

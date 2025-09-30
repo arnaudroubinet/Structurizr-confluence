@@ -54,10 +54,19 @@ Apache HttpClient 5 uses SLF4J for logging with the following logger hierarchy:
 
 ### Quarkus Logging Bridge
 
-In Quarkus applications:
-1. SLF4J is bridged to JBoss LogManager
-2. JBoss LogManager uses java.util.logging (JUL) as its backend
-3. Therefore, to enable HTTP logging, we must configure the JUL loggers
+In Quarkus applications, the logging architecture is:
+
+1. **JBoss LogManager** (version 3.0.6.Final) is the core logging implementation
+2. **SLF4J is bridged to JBoss LogManager** via `slf4j-jboss-logmanager` (version 2.0.0.Final)
+3. **JBoss LogManager implements the JUL API** - it extends `java.util.logging.LogManager`
+4. **Apache HttpClient 5 uses SLF4J** for logging
+
+When we call `java.util.logging.Logger.getLogger()` in Quarkus, we actually get an `org.jboss.logmanager.Logger` instance managed by JBoss LogManager. This is why our code uses the standard JUL API but still properly integrates with the Quarkus/JBoss logging system.
+
+The logging flow for Apache HttpClient 5 is:
+```
+HttpClient 5 → SLF4J → slf4j-jboss-logmanager bridge → JBoss LogManager → Console/File output
+```
 
 ### Code Implementation
 
@@ -67,11 +76,14 @@ The `enableHttpLogging()` method in `StructurizrWorkspaceLoader`:
 private void enableHttpLogging() {
     try {
         // Get the JUL loggers for Apache HttpClient 5
+        // Note: In Quarkus, java.util.logging.Logger.getLogger() returns
+        // org.jboss.logmanager.Logger instances which are managed by JBoss LogManager
         java.util.logging.Logger httpClientLogger = java.util.logging.Logger.getLogger("org.apache.hc.client5.http");
         java.util.logging.Logger wireLogger = java.util.logging.Logger.getLogger("org.apache.hc.client5.http.wire");
         java.util.logging.Logger headersLogger = java.util.logging.Logger.getLogger("org.apache.hc.client5.http.headers");
         
         // Set all to FINE (equivalent to DEBUG in SLF4J)
+        // These calls work with JBoss LogManager which manages the actual log levels
         httpClientLogger.setLevel(Level.FINE);
         wireLogger.setLevel(Level.FINE);
         headersLogger.setLevel(Level.FINE);
@@ -82,6 +94,8 @@ private void enableHttpLogging() {
     }
 }
 ```
+
+This approach properly integrates with Quarkus's embedded JBoss LogManager without requiring any Quarkus-specific or JBoss-specific APIs.
 
 ## Testing
 
