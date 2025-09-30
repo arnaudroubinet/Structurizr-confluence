@@ -548,8 +548,6 @@ public class ConfluenceExporter {
      * Each view is rendered as a diagram image only, without titles or descriptions.
      */
     private void exportAllViewsSinglePage(Workspace workspace, String parentPageId) throws Exception {
-        ViewSet views = workspace.getViews();
-
         String viewsPageId = confluenceClient.createOrUpdatePage(
             "Views",
             "{\"version\":1,\"type\":\"doc\",\"content\":[]}",
@@ -564,12 +562,8 @@ public class ConfluenceExporter {
         // 3) Construire le contenu ADF de la page "Views"
         Document viewsDoc = Document.create();
 
-        // Add diagram images for each view category
-        viewsDoc = addViewsWithImages(viewsDoc, views.getSystemLandscapeViews(), "System Landscape Views");
-        viewsDoc = addViewsWithImages(viewsDoc, views.getSystemContextViews(), "System Context Views");
-        viewsDoc = addViewsWithImages(viewsDoc, views.getContainerViews(), "Container Views");
-        viewsDoc = addViewsWithImages(viewsDoc, views.getComponentViews(), "Component Views");
-        viewsDoc = addViewsWithImages(viewsDoc, views.getDeploymentViews(), "Deployment Views");
+        // Add all exported diagrams from /diagrams page
+        viewsDoc = addExportedDiagrams(viewsDoc);
 
         // 4) Mettre à jour la page avec le contenu complet
         confluenceClient.updatePageById(viewsPageId, "Views", convertDocumentToJson(viewsDoc));
@@ -585,7 +579,6 @@ public class ConfluenceExporter {
      * @param branchName branch name to add as suffix to page title
      */
     private void exportAllViewsSinglePage(Workspace workspace, String parentPageId, String branchName) throws Exception {
-        ViewSet views = workspace.getViews();
 
         String viewsPageTitle = "Views - " + branchName;
         String viewsPageId = confluenceClient.createOrUpdatePage(
@@ -602,14 +595,96 @@ public class ConfluenceExporter {
         // Construire le contenu ADF de la page "Views"
         Document viewsDoc = Document.create();
 
-        viewsDoc = addViewsWithImages(viewsDoc, views.getSystemLandscapeViews(), "System Landscape Views");
-        viewsDoc = addViewsWithImages(viewsDoc, views.getSystemContextViews(), "System Context Views");
-        viewsDoc = addViewsWithImages(viewsDoc, views.getContainerViews(), "Container Views");
-        viewsDoc = addViewsWithImages(viewsDoc, views.getComponentViews(), "Component Views");
-        viewsDoc = addViewsWithImages(viewsDoc, views.getDeploymentViews(), "Deployment Views");
+        // Add all exported diagrams from /diagrams page
+        viewsDoc = addExportedDiagrams(viewsDoc);
 
         confluenceClient.updatePageById(viewsPageId, viewsPageTitle, convertDocumentToJson(viewsDoc));
         logger.info("Created/updated Views page with branch suffix (pageId: {})", viewsPageId);
+    }
+
+    /**
+     * Adds all exported diagram images from the /diagrams page to the document.
+     * Iterates through exported diagram files instead of workspace views to ensure
+     * all diagrams present on the /diagrams page are included.
+     * 
+     * @param doc the ADF document to add diagrams to
+     * @return the updated document
+     */
+    private Document addExportedDiagrams(Document doc) {
+        if (exportedDiagrams == null || exportedDiagrams.isEmpty()) {
+            logger.warn("No exported diagrams available to add to Views page");
+            return doc;
+        }
+        
+        logger.info("Adding {} exported diagrams to Views page", exportedDiagrams.size());
+        
+        for (File diagramFile : exportedDiagrams) {
+            String filename = diagramFile.getName();
+            
+            // Extract view key from filename
+            // Expected format: structurizr-{workspaceId}-{viewKey}.png or structurizr-{workspaceId}-{viewKey}-key.png
+            String viewKey = extractViewKeyFromFilename(filename);
+            
+            if (viewKey == null) {
+                logger.warn("Could not extract view key from filename: {}", filename);
+                continue;
+            }
+            
+            // Skip key files (only process main diagram files)
+            if (filename.endsWith("-key.png")) {
+                logger.debug("Skipping key file: {}", filename);
+                continue;
+            }
+            
+            logger.debug("Adding diagram for view key: {} from file: {}", viewKey, filename);
+            
+            // Insert the diagram image via local:diagram:KEY placeholder
+            try {
+                String imgHtml = "<p><img src=\"local:diagram:" + viewKey + "\" alt=\"" + viewKey + "\"></p><p>&nbsp;</p>";
+                Document imgDoc = htmlToAdfConverter.convertToAdf(imgHtml, viewKey);
+                doc = combineDocuments(doc, imgDoc);
+            } catch (Exception e) {
+                logger.warn("Failed to embed image for view {} from file {}", viewKey, filename, e);
+            }
+        }
+        
+        return doc;
+    }
+    
+    /**
+     * Extracts the view key from a diagram filename.
+     * Expected format: structurizr-{workspaceId}-{viewKey}.png or structurizr-{workspaceId}-{viewKey}-key.png
+     * 
+     * @param filename the diagram filename
+     * @return the view key, or null if it cannot be extracted
+     */
+    private String extractViewKeyFromFilename(String filename) {
+        if (filename == null || !filename.contains("-") || !filename.contains(".")) {
+            return null;
+        }
+        
+        // Remove extension
+        String nameWithoutExt = filename.substring(0, filename.lastIndexOf('.'));
+        
+        // Remove "-key" suffix if present
+        if (nameWithoutExt.endsWith("-key")) {
+            nameWithoutExt = nameWithoutExt.substring(0, nameWithoutExt.length() - 4);
+        }
+        
+        // Expected format: structurizr-{workspaceId}-{viewKey}
+        // Find the second dash (after workspaceId)
+        int firstDash = nameWithoutExt.indexOf('-');
+        if (firstDash < 0) {
+            return null;
+        }
+        
+        int secondDash = nameWithoutExt.indexOf('-', firstDash + 1);
+        if (secondDash < 0) {
+            return null;
+        }
+        
+        // Everything after the second dash is the view key
+        return nameWithoutExt.substring(secondDash + 1);
     }
 
     /**
