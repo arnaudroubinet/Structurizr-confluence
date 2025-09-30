@@ -5,8 +5,9 @@ echo "[init-dev] Initialisation des dépendances pour le workspace..."
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Liste de paquets nécessaires pour exécuter Chromium (Puppeteer) en headless sur Ubuntu/Debian,
+# Liste de paquets nécessaires pour exécuter Chromium (Playwright) en headless sur Ubuntu/Debian,
 # ainsi que GraphViz requis par le projet.
+# Note: Le projet utilise uniquement Chromium, pas Firefox ni WebKit.
 APT_PKGS=(
   ca-certificates
   fonts-liberation

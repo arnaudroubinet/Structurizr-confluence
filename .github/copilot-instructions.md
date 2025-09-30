@@ -78,9 +78,14 @@ export PATH=$JAVA_HOME/bin:$PATH
 ```
 
 ### Installing Playwright Dependencies
+
+The application only uses Chromium for diagram export. Install only the Chromium browser to save time and disk space:
+
 ```bash
-mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
+mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps chromium"
 ```
+
+**Note**: By default, Playwright installs all browsers (Chromium, Firefox, WebKit). Specifying `chromium` ensures only the required browser is installed.
 
 ## Build and Validation Instructions
 

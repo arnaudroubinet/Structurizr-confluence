@@ -51,7 +51,7 @@ docker build -t structurizr-confluence:latest .
 
 ## Required System Libraries
 
-The Docker image includes all necessary libraries for Playwright functionality:
+The Docker image includes system libraries necessary for Playwright's Chromium browser. The application uses only Chromium for diagram export to minimize image size and dependencies.
 
 ### Core Playwright Dependencies
 - Browser libraries: `libnss3`, `libnspr4`, `libatk-bridge2.0-0`
@@ -64,6 +64,8 @@ The Docker image includes all necessary libraries for Playwright functionality:
 - GStreamer: `libgstreamer1.0-0`, `libgstreamer-plugins-base1.0-0`, `libgstreamer-gl1.0-0`, `libgstreamer-plugins-bad1.0-0`, `gstreamer1.0-libav`
 - Media libraries: `libatomic1`, `libxslt1.1`, `libwoff1`, `libvpx9`, `libopus0`, `libwebpdemux2`
 - System libraries: `libevent-2.1-7t64`, `libharfbuzz-icu0`, `libenchant-2-2`, `libsecret-1-0`, `libhyphen0`, `libmanette-0.2-0`, `libflite1`
+
+**Note**: These dependencies are specifically for Chromium. The application does not use Firefox or WebKit.
 
 ## Usage Examples
 
