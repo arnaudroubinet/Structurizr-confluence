@@ -111,7 +111,6 @@ Parent Page (--page-id)
 └── Branch Subpage (--branch name)
     ├── Documentation - {branch}
     ├── Views - {branch}
-    ├── Model Documentation - {branch}
     └── Architecture Decision Records - {branch}
 ```
 
