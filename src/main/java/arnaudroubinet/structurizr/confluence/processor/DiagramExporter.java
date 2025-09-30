@@ -321,12 +321,38 @@ public class DiagramExporter {
             String diagramFilename = "structurizr-" + workspaceId + "-" + viewKey + ".png";
             Path diagramPath = outputDirectory.resolve(diagramFilename);
             
-            // Take screenshot of only the diagram container element for a cleaner export
-            Locator diagramElement = structurizrFrame.locator(".structurizrDiagram, .diagram, [id*='diagram']").first();
-            if (diagramElement.count() > 0) {
+            // Take screenshot of only the diagram SVG element for a cleaner export
+            // Try multiple selectors in order of preference
+            Locator diagramElement = null;
+            String[] selectors = {
+                "svg#canvas",  // Most specific - the actual diagram canvas
+                "svg",  // Any SVG element (usually the diagram)
+                ".structurizrDiagram svg",
+                ".diagram svg",
+                "#canvasContainer svg",
+                ".structurizrDiagram",
+                ".diagram"
+            };
+            
+            for (String selector : selectors) {
+                try {
+                    Locator locator = structurizrFrame.locator(selector).first();
+                    if (locator.count() > 0) {
+                        diagramElement = locator;
+                        logger.debug("Found diagram element using selector: {}", selector);
+                        break;
+                    }
+                } catch (Exception e) {
+                    logger.debug("Selector {} did not match: {}", selector, e.getMessage());
+                }
+            }
+            
+            if (diagramElement != null) {
                 diagramElement.screenshot(new Locator.ScreenshotOptions().setPath(diagramPath));
+                logger.info("Exported diagram for view {} to {}", viewKey, diagramFilename);
             } else {
-                logger.warn("Could not find diagram element for view {}", viewKey);
+                logger.warn("Could not find diagram element for view {}, taking full page screenshot", viewKey);
+                structurizrFrame.page().screenshot(new Page.ScreenshotOptions().setPath(diagramPath));
             }
             
             exportedFiles.add(diagramPath.toFile());

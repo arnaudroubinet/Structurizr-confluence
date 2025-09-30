@@ -402,6 +402,22 @@ public class ConfluenceClient {
     }
     
     /**
+     * Checks if a page exists by ID.
+     * 
+     * @param pageId the page ID to check
+     * @return true if the page exists, false otherwise
+     */
+    public boolean pageExists(String pageId) {
+        try {
+            api.getPageInfo(pageId).await().indefinitely();
+            return true;
+        } catch (Exception e) {
+            logger.debug("Page with ID {} does not exist: {}", pageId, e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
      * Uploads an attachment to a Confluence page.
      * 
      * @param pageId the ID of the page to attach the file to
