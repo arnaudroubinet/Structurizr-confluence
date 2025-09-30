@@ -220,8 +220,6 @@ public class ConfluenceExporter {
     // Générer une seule page avec toutes les vues (toutes les images de diagrammes)
     exportAllViewsSinglePage(workspace, mainPageId);
 
-    exportModel(workspace, mainPageId);
-
     // Générer les ADRs
     exportDecisions(workspace, mainPageId, branchName);
 
@@ -408,9 +406,6 @@ public class ConfluenceExporter {
 
         // Create Views page under branch page with branch suffix
         exportAllViewsSinglePage(workspace, branchPageId, branchName);
-
-        // Create Model page under branch page with branch suffix
-        exportModel(workspace, branchPageId, branchName);
 
         // Create ADRs under branch page with branch suffix
         exportDecisions(workspace, branchPageId, branchName);
@@ -618,15 +613,13 @@ public class ConfluenceExporter {
     }
 
     /**
-     * Ajoute au document fourni toutes les vues d’une catégorie avec l’image de diagramme correspondante.
-     * Les images sont centrées (géré par HtmlToAdfConverter via mediaSingle layout="center").
+     * Adds diagram images from a view category to the document.
+     * Only includes the diagram images without any text, titles, or descriptions.
      */
     private Document addViewsWithImages(Document doc, Collection<? extends View> views, String categoryTitle) {
         if (views == null || views.isEmpty()) {
             return doc;
         }
-
-        doc.h2(categoryTitle);
 
         for (View view : views) {
             String viewTitle = view.getTitle();
@@ -634,13 +627,8 @@ public class ConfluenceExporter {
                 viewTitle = view.getKey() != null ? view.getKey() : "Untitled View";
             }
 
-            doc.h3(viewTitle);
-
-            if (view.getDescription() != null && !view.getDescription().trim().isEmpty()) {
-                doc.paragraph(view.getDescription());
-            }
-
             // Insérer l’image du diagramme via placeholder local:diagram:KEY pour déclencher l’upload
+            // Only the image, no titles or descriptions
             try {
                 String imgHtml = "<p><img src=\"local:diagram:" + view.getKey() + "\" alt=\"" + viewTitle + "\"></p>";
                 Document imgDoc = htmlToAdfConverter.convertToAdf(imgHtml, viewTitle);
@@ -652,132 +640,6 @@ public class ConfluenceExporter {
         return doc;
     }
     
-    private void exportModel(Workspace workspace, String parentPageId) throws Exception {
-        Model model = workspace.getModel();
-        
-        // Ne pas ajouter le H1 "Model Documentation" en tête du contenu
-        Document modelDoc = Document.create();
-        
-        // People
-        if (!model.getPeople().isEmpty()) {
-            modelDoc.h2("People");
-            
-            for (Person person : model.getPeople()) {
-                addElementDocumentation(modelDoc, person);
-            }
-        }
-        
-        // Software Systems
-        if (!model.getSoftwareSystems().isEmpty()) {
-            modelDoc.h2("Software Systems");
-            
-            for (SoftwareSystem softwareSystem : model.getSoftwareSystems()) {
-                addElementDocumentation(modelDoc, softwareSystem);
-                
-                // Containers
-                if (!softwareSystem.getContainers().isEmpty()) {
-                    modelDoc.h4("Containers");
-                    
-                    for (Container container : softwareSystem.getContainers()) {
-                        addElementDocumentation(modelDoc, container);
-                        
-                        // Components
-                        if (!container.getComponents().isEmpty()) {
-                            modelDoc.h5("Components");
-                            
-                            for (Component component : container.getComponents()) {
-                                addElementDocumentation(modelDoc, component);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        confluenceClient.createOrUpdatePage("Model Documentation", convertDocumentToJson(modelDoc), parentPageId);
-        logger.info("Created/updated model documentation page");
-    }
-    
-    /**
-     * Exports model documentation with branch suffix.
-     */
-    private void exportModel(Workspace workspace, String parentPageId, String branchName) throws Exception {
-        Model model = workspace.getModel();
-        
-        Document modelDoc = Document.create();
-        
-        // People
-        if (!model.getPeople().isEmpty()) {
-            modelDoc.h2("People");
-            
-            for (Person person : model.getPeople()) {
-                addElementDocumentation(modelDoc, person);
-            }
-        }
-        
-        // Software Systems
-        if (!model.getSoftwareSystems().isEmpty()) {
-            modelDoc.h2("Software Systems");
-            
-            for (SoftwareSystem softwareSystem : model.getSoftwareSystems()) {
-                addElementDocumentation(modelDoc, softwareSystem);
-                
-                // Containers
-                if (!softwareSystem.getContainers().isEmpty()) {
-                    modelDoc.h4("Containers");
-                    
-                    for (Container container : softwareSystem.getContainers()) {
-                        addElementDocumentation(modelDoc, container);
-                        
-                        // Components
-                        if (!container.getComponents().isEmpty()) {
-                            modelDoc.h5("Components");
-                            
-                            for (Component component : container.getComponents()) {
-                                addElementDocumentation(modelDoc, component);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        String modelPageTitle = "Model Documentation - " + branchName;
-        confluenceClient.createOrUpdatePage(modelPageTitle, convertDocumentToJson(modelDoc), parentPageId);
-        logger.info("Created/updated model documentation page with branch suffix");
-    }
-    
-    private void addElementDocumentation(Document doc, Element element) {
-        doc.h3(element.getName());
-        
-        if (element.getDescription() != null && !element.getDescription().trim().isEmpty()) {
-            doc.paragraph(element.getDescription());
-        }
-        
-        // Add element properties
-        doc.bulletList(list -> {
-            list.item("ID: " + element.getId());
-            
-            if (element instanceof SoftwareSystem) {
-                SoftwareSystem system = (SoftwareSystem) element;
-                list.item("Location: " + system.getLocation().toString());
-            }
-            
-            if (element instanceof Container) {
-                Container container = (Container) element;
-                if (container.getTechnology() != null && !container.getTechnology().trim().isEmpty()) {
-                    list.item("Technology: " + container.getTechnology());
-                }
-            }
-            
-            if (element instanceof Component) {
-                Component component = (Component) element;
-                if (component.getTechnology() != null && !component.getTechnology().trim().isEmpty()) {
-                    list.item("Technology: " + component.getTechnology());
-                }
-            }
-        });
-    }
     
     private void exportDecisions(Workspace workspace, String parentPageId, String branchName) throws Exception {
         if (workspace.getDocumentation() == null || workspace.getDocumentation().getDecisions().isEmpty()) {
