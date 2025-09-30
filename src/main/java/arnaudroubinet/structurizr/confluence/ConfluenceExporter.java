@@ -544,8 +544,8 @@ public class ConfluenceExporter {
     
 
     /**
-     * Crée une seule page "Views" contenant toutes les vues (diagrammes) exportées.
-     * Chaque vue est rendue avec un titre et l’image correspondante, centrée via mediaSingle.
+     * Creates a single "Views" page containing all exported view diagrams.
+     * Each view is rendered as a diagram image only, without titles or descriptions.
      */
     private void exportAllViewsSinglePage(Workspace workspace, String parentPageId) throws Exception {
         ViewSet views = workspace.getViews();
@@ -564,7 +564,7 @@ public class ConfluenceExporter {
         // 3) Construire le contenu ADF de la page "Views"
         Document viewsDoc = Document.create();
 
-        // Pour chaque catégorie, si non vide, ajouter un titre, puis chaque vue avec description et image
+        // Add diagram images for each view category
         viewsDoc = addViewsWithImages(viewsDoc, views.getSystemLandscapeViews(), "System Landscape Views");
         viewsDoc = addViewsWithImages(viewsDoc, views.getSystemContextViews(), "System Context Views");
         viewsDoc = addViewsWithImages(viewsDoc, views.getContainerViews(), "Container Views");
@@ -577,8 +577,8 @@ public class ConfluenceExporter {
     }
     
     /**
-     * Crée une seule page "Views" contenant toutes les vues (diagrammes) exportées.
-     * Version avec support du branchName.
+     * Creates a single "Views" page containing all exported view diagrams.
+     * Version with branch name support.
      * 
      * @param workspace the workspace
      * @param parentPageId the parent page ID
