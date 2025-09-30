@@ -4,7 +4,7 @@
 FROM eclipse-temurin:21-jre
 ENV APP_HOME=/opt/structurizr \
     LANG=C.UTF-8 \
-    JAVA_OPTS=""
+    JAVA_OPTS="--add-opens java.base/sun.nio.ch=ALL-UNNAMED --add-opens java.base/java.io=ALL-UNNAMED"
 WORKDIR ${APP_HOME}
 
 LABEL org.opencontainers.image.source="https://github.com/arnaudroubinet/Structurizr-confluence" \
@@ -72,6 +72,6 @@ ARG BUILD_DIR=target
 COPY ${BUILD_DIR}/quarkus-app/ ./quarkus-app/
 
 # Default execution (Picocli CLI). Provide args at docker run time.
-ENTRYPOINT ["java","-jar","/opt/structurizr/quarkus-app/quarkus-run.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /opt/structurizr/quarkus-app/quarkus-run.jar \"$@\"", "--"]
 # Optional default arguments
 CMD ["--help"]
