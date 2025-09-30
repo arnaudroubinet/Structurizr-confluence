@@ -822,18 +822,11 @@ public class ConfluenceExporter {
             logger.debug("Checking diagram file: {}", filename);
             
             // Expected format: structurizr-{workspaceId}-{viewKey}.png
-            // Extract the view key from the filename
-            if (filename.contains("-") && filename.contains(".")) {
-                // Get the part after the last dash and before the extension
-                int lastDashIndex = filename.lastIndexOf('-');
-                int extensionIndex = filename.lastIndexOf('.');
-                if (lastDashIndex > 0 && extensionIndex > lastDashIndex) {
-                    String extractedViewKey = filename.substring(lastDashIndex + 1, extensionIndex);
-                    if (extractedViewKey.equals(viewKey)) {
-                        logger.info("Found exact matching diagram file: {} for view key: {}", filename, viewKey);
-                        return diagramFile;
-                    }
-                }
+            // Extract the view key using the same logic as extractViewKeyFromFilename
+            String extractedViewKey = extractViewKeyFromFilename(filename);
+            if (extractedViewKey != null && extractedViewKey.equals(viewKey)) {
+                logger.info("Found exact matching diagram file: {} for view key: {}", filename, viewKey);
+                return diagramFile;
             }
             
             // Fallback: check if filename contains the view key (for backward compatibility)
