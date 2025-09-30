@@ -7,6 +7,8 @@ import arnaudroubinet.structurizr.confluence.util.SslTrustUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.logging.Level;
+
 /**
  * Client for loading workspaces from a Structurizr on-premise instance.
  */
@@ -30,10 +32,9 @@ public class StructurizrWorkspaceLoader {
         if (config.isDebugMode()) {
             logger.info("Debug mode enabled - HTTP request/response logging will be detailed");
             // Enable HTTP wire logging for debugging
-            System.setProperty("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.SimpleLog");
-            System.setProperty("org.apache.commons.logging.simplelog.log.org.apache.http.wire", "DEBUG");
-            System.setProperty("org.apache.commons.logging.simplelog.log.org.apache.http.headers", "DEBUG");
-            System.setProperty("org.apache.commons.logging.simplelog.log.httpclient.wire", "DEBUG");
+            // Apache HttpClient 5 (used by StructurizrClient/WorkspaceApiClient) uses SLF4J for logging
+            // We need to configure the underlying JUL (java.util.logging) loggers that back SLF4J in Quarkus
+            enableHttpLogging();
         }
         
         // Create StructurizrClient with API URL, key, and secret
@@ -48,6 +49,28 @@ public class StructurizrWorkspaceLoader {
             if (config.isDebugMode()) {
                 logger.debug("Created StructurizrClient for Structurizr cloud service");
             }
+        }
+    }
+    
+    /**
+     * Enables HTTP logging for Apache HttpClient 5 used by StructurizrClient/WorkspaceApiClient.
+     * This configures the underlying java.util.logging loggers to show HTTP request/response details.
+     */
+    private void enableHttpLogging() {
+        try {
+            // Get the JUL loggers for Apache HttpClient 5
+            java.util.logging.Logger httpClientLogger = java.util.logging.Logger.getLogger("org.apache.hc.client5.http");
+            java.util.logging.Logger wireLogger = java.util.logging.Logger.getLogger("org.apache.hc.client5.http.wire");
+            java.util.logging.Logger headersLogger = java.util.logging.Logger.getLogger("org.apache.hc.client5.http.headers");
+            
+            // Set all to FINE (equivalent to DEBUG in SLF4J)
+            httpClientLogger.setLevel(Level.FINE);
+            wireLogger.setLevel(Level.FINE);
+            headersLogger.setLevel(Level.FINE);
+            
+            logger.debug("HTTP client logging enabled for WorkspaceApiClient/StructurizrClient");
+        } catch (Exception e) {
+            logger.warn("Failed to enable HTTP client logging: {}", e.getMessage());
         }
     }
     
