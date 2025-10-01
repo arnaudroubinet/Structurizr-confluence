@@ -559,14 +559,25 @@ public class ConfluenceExporter {
         htmlToAdfConverter.setImageUploadManager(imageUploadManager);
         htmlToAdfConverter.setCurrentPageId(viewsPageId);
 
-        // 3) Construire le contenu ADF de la page "Views"
+        // 3) Construire le contenu ADF de la page "Views" using JSON approach (like documentation)
         Document viewsDoc = Document.create();
+        String viewsJson = convertDocumentToJson(viewsDoc);
+        ObjectNode viewsNode = objectMapper.readTree(viewsJson) instanceof ObjectNode
+            ? (ObjectNode) objectMapper.readTree(viewsJson)
+            : objectMapper.createObjectNode();
+        ArrayNode viewsContent = viewsNode.has("content") && viewsNode.get("content").isArray()
+            ? (ArrayNode) viewsNode.get("content")
+            : viewsNode.putArray("content");
 
         // Add all exported diagrams from /diagrams page
-        viewsDoc = addExportedDiagrams(viewsDoc);
+        addExportedDiagramsToContent(viewsContent);
 
         // 4) Mettre à jour la page avec le contenu complet
-        confluenceClient.updatePageById(viewsPageId, "Views", convertDocumentToJson(viewsDoc));
+        String finalViewsJson = objectMapper.writeValueAsString(viewsNode);
+        logger.info("Views page document JSON length: {} characters", finalViewsJson.length());
+        logger.debug("Views page document JSON: {}", finalViewsJson);
+        
+        confluenceClient.updatePageById(viewsPageId, "Views", finalViewsJson);
         logger.info("Created/updated single Views page with all diagrams (pageId: {})", viewsPageId);
     }
     
@@ -592,13 +603,24 @@ public class ConfluenceExporter {
         htmlToAdfConverter.setImageUploadManager(imageUploadManager);
         htmlToAdfConverter.setCurrentPageId(viewsPageId);
 
-        // Construire le contenu ADF de la page "Views"
+        // Construire le contenu ADF de la page "Views" using JSON approach (like documentation)
         Document viewsDoc = Document.create();
+        String viewsJson = convertDocumentToJson(viewsDoc);
+        ObjectNode viewsNode = objectMapper.readTree(viewsJson) instanceof ObjectNode
+            ? (ObjectNode) objectMapper.readTree(viewsJson)
+            : objectMapper.createObjectNode();
+        ArrayNode viewsContent = viewsNode.has("content") && viewsNode.get("content").isArray()
+            ? (ArrayNode) viewsNode.get("content")
+            : viewsNode.putArray("content");
 
         // Add all exported diagrams from /diagrams page
-        viewsDoc = addExportedDiagrams(viewsDoc);
+        addExportedDiagramsToContent(viewsContent);
 
-        confluenceClient.updatePageById(viewsPageId, viewsPageTitle, convertDocumentToJson(viewsDoc));
+        String finalViewsJson = objectMapper.writeValueAsString(viewsNode);
+        logger.info("Views page document JSON length: {} characters", finalViewsJson.length());
+        logger.debug("Views page document JSON: {}", finalViewsJson);
+        
+        confluenceClient.updatePageById(viewsPageId, viewsPageTitle, finalViewsJson);
         logger.info("Created/updated Views page with branch suffix (pageId: {})", viewsPageId);
     }
 
@@ -610,16 +632,52 @@ public class ConfluenceExporter {
      * @param doc the ADF document to add diagrams to
      * @return the updated document
      */
-    private Document addExportedDiagrams(Document doc) {
-        if (exportedDiagrams == null || exportedDiagrams.isEmpty()) {
-            logger.warn("No exported diagrams available to add to Views page");
-            return doc;
+    /**
+     * Adds all exported diagram images from the /diagrams page to the content array.
+     * Iterates through exported diagram files instead of workspace views to ensure
+     * all diagrams present on the /diagrams page are included.
+     * Uses JSON approach (like documentation) to avoid Document serialization issues.
+     * 
+     * @param content the ArrayNode to add diagram content to
+     */
+    private void addExportedDiagramsToContent(ArrayNode content) {
+        if (exportedDiagrams == null) {
+            logger.error("exportedDiagrams is null - diagram export may have failed");
+            logger.error("Views page will be empty. Please ensure diagram export succeeds.");
+            return;
+        }
+        
+        if (exportedDiagrams.isEmpty()) {
+            logger.error("exportedDiagrams list is empty - no diagrams were exported");
+            logger.error("Views page will be empty. Please check diagram export logs.");
+            return;
         }
         
         logger.info("Adding {} exported diagrams to Views page", exportedDiagrams.size());
+        logger.info("Exported diagram files: {}", exportedDiagrams.stream()
+            .map(File::getName)
+            .collect(java.util.stream.Collectors.joining(", ")));
+        
+        int processedCount = 0;
+        int skippedCount = 0;
+        int failedCount = 0;
         
         for (File diagramFile : exportedDiagrams) {
             String filename = diagramFile.getName();
+            logger.debug("Processing diagram file: {}", filename);
+            
+            // Verify file exists and is readable
+            if (!diagramFile.exists()) {
+                logger.error("Diagram file does not exist: {}", diagramFile.getAbsolutePath());
+                failedCount++;
+                continue;
+            }
+            
+            if (!diagramFile.canRead()) {
+                logger.error("Diagram file is not readable: {}", diagramFile.getAbsolutePath());
+                failedCount++;
+                continue;
+            }
             
             // Extract view key from filename
             // Expected format: structurizr-{workspaceId}-{viewKey}.png or structurizr-{workspaceId}-{viewKey}-key.png
@@ -627,28 +685,55 @@ public class ConfluenceExporter {
             
             if (viewKey == null) {
                 logger.warn("Could not extract view key from filename: {}", filename);
+                failedCount++;
                 continue;
             }
             
             // Skip key files (only process main diagram files)
             if (filename.endsWith("-key.png")) {
                 logger.debug("Skipping key file: {}", filename);
+                skippedCount++;
                 continue;
             }
             
-            logger.debug("Adding diagram for view key: {} from file: {}", viewKey, filename);
+            logger.info("Adding diagram for view key: {} from file: {}", viewKey, filename);
             
             // Insert the diagram image via local:diagram:KEY placeholder
             try {
                 String imgHtml = "<p><img src=\"local:diagram:" + viewKey + "\" alt=\"" + viewKey + "\"></p><p>&nbsp;</p>";
-                Document imgDoc = htmlToAdfConverter.convertToAdf(imgHtml, viewKey);
-                doc = combineDocuments(doc, imgDoc);
+                logger.debug("Created HTML for diagram: {}", imgHtml);
+                
+                // Convert to ADF JSON and extract content nodes (same approach as documentation)
+                String diagramAdfJson = htmlToAdfConverter.convertToAdfJson(imgHtml, viewKey);
+                ObjectNode diagramNode = objectMapper.readTree(diagramAdfJson) instanceof ObjectNode
+                    ? (ObjectNode) objectMapper.readTree(diagramAdfJson)
+                    : objectMapper.createObjectNode();
+                JsonNode diagramContent = diagramNode.get("content");
+                
+                if (diagramContent != null && diagramContent.isArray()) {
+                    for (JsonNode child : diagramContent) {
+                        content.add(child);
+                    }
+                    processedCount++;
+                    logger.info("Successfully added diagram {} to Views page (total processed: {})", viewKey, processedCount);
+                } else {
+                    logger.warn("No content found in ADF for diagram: {}", viewKey);
+                    failedCount++;
+                }
             } catch (Exception e) {
-                logger.warn("Failed to embed image for view {} from file {}", viewKey, filename, e);
+                logger.error("Failed to embed image for view {} from file {}", viewKey, filename, e);
+                failedCount++;
             }
         }
         
-        return doc;
+        logger.info("Views page diagram processing complete: {} processed, {} skipped (key files), {} failed", 
+            processedCount, skippedCount, failedCount);
+        
+        if (processedCount == 0) {
+            logger.error("No diagrams were successfully added to Views page!");
+            logger.error("Total diagrams in list: {}, Processed: {}, Skipped: {}, Failed: {}", 
+                exportedDiagrams.size(), processedCount, skippedCount, failedCount);
+        }
     }
     
     /**
