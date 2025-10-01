@@ -59,4 +59,9 @@ public interface ConfluenceApi {
     @Path("/rest/api/content/{attachmentId}")
     Uni<String> getAttachmentWithExtensions(@PathParam("attachmentId") String attachmentId,
                                             @QueryParam("expand") String expand);
+
+    @GET
+    @Path("/rest/api/content/{pageId}/child/attachment")
+    Uni<String> getAttachments(@PathParam("pageId") String pageId,
+                               @QueryParam("filename") String filename);
 }

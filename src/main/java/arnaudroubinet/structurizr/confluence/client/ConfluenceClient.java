@@ -418,7 +418,93 @@ public class ConfluenceClient {
     }
     
     /**
+     * Checks if an attachment with the given filename exists on a page.
+     * 
+     * @param pageId the ID of the page to check
+     * @param fileName the name of the attachment to check
+     * @return the attachment ID if it exists, null otherwise
+     * @throws IOException if the request fails
+     */
+    private String getExistingAttachmentId(String pageId, String fileName) throws IOException {
+        try {
+            String responseBody = api.getAttachments(pageId, fileName).await().indefinitely();
+            JsonNode responseJson = objectMapper.readTree(responseBody);
+            JsonNode results = responseJson.get("results");
+            if (results != null && results.isArray() && results.size() > 0) {
+                String attachmentId = results.get(0).get("id").asText();
+                logger.debug("Found existing attachment '{}' with ID: {}", fileName, attachmentId);
+                return attachmentId;
+            }
+            return null;
+        } catch (Exception e) {
+            logger.debug("No existing attachment found for filename '{}': {}", fileName, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Updates an existing attachment with new content.
+     * 
+     * @param pageId the ID of the page containing the attachment
+     * @param attachmentId the ID of the attachment to update
+     * @param fileName the name of the file
+     * @param fileContent the binary content of the file
+     * @param mimeType the MIME type of the file
+     * @return the attachment ID
+     * @throws IOException if the update fails
+     */
+    private String updateAttachmentData(String pageId, String attachmentId, String fileName, byte[] fileContent, String mimeType) throws IOException {
+        try {
+            String boundary = "--------------------------" + System.currentTimeMillis();
+            String url = config.getBaseUrl() + "/wiki/rest/api/content/" + pageId + "/child/attachment/" + attachmentId + "/data";
+            String encoded = Base64.getEncoder().encodeToString((config.getUsername()+":"+config.getApiToken()).getBytes(StandardCharsets.UTF_8));
+            var bodyBuilder = new StringBuilder();
+            bodyBuilder.append("--").append(boundary).append("\r\n");
+            bodyBuilder.append("Content-Disposition: form-data; name=\"file\"; filename=\"").append(fileName).append("\"\r\n");
+            bodyBuilder.append("Content-Type: ").append(mimeType).append("\r\n\r\n");
+            byte[] prefix = bodyBuilder.toString().getBytes(StandardCharsets.UTF_8);
+            byte[] suffix = ("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
+            byte[] multipart = new byte[prefix.length + fileContent.length + suffix.length];
+            System.arraycopy(prefix, 0, multipart, 0, prefix.length);
+            System.arraycopy(fileContent, 0, multipart, prefix.length, fileContent.length);
+            System.arraycopy(suffix, 0, multipart, prefix.length + fileContent.length, suffix.length);
+
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .header("Authorization", "Basic " + encoded)
+                .header("X-Atlassian-Token", "nocheck")
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(multipart))
+                .build();
+
+            var client = SslTrustUtils.shouldDisableSslVerification() 
+                ? SslTrustUtils.createTrustAllHttpClient() 
+                : HttpClient.newHttpClient();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            String responseBody = response.body();
+            if (response.statusCode() == 200) {
+                JsonNode jsonResponse = objectMapper.readTree(responseBody);
+                JsonNode results = jsonResponse.get("results");
+                if (results != null && results.isArray() && results.size() > 0) {
+                    String updatedAttachmentId = results.get(0).get("id").asText();
+                    logger.info("Attachment updated successfully with ID: {}", updatedAttachmentId);
+                    return updatedAttachmentId;
+                }
+                // Response might not have results array for update, just return the original ID
+                logger.info("Attachment updated successfully with ID: {}", attachmentId);
+                return attachmentId;
+            }
+            throw new IOException("Failed to update attachment: HTTP " + response.statusCode() + " - " + responseBody);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted", ie);
+        } catch (Exception e) {
+            throw new IOException("Failed to update attachment", e);
+        }
+    }
+
+    /**
      * Uploads an attachment to a Confluence page.
+     * If an attachment with the same filename already exists, it will be updated instead.
      * 
      * @param pageId the ID of the page to attach the file to
      * @param fileName the name of the file
@@ -428,6 +514,16 @@ public class ConfluenceClient {
      * @throws IOException if the upload fails
      */
     public String uploadAttachment(String pageId, String fileName, byte[] fileContent, String mimeType) throws IOException {
+        // Check if attachment with same filename already exists
+        String existingAttachmentId = getExistingAttachmentId(pageId, fileName);
+        
+        if (existingAttachmentId != null) {
+            // Update existing attachment
+            logger.info("Attachment '{}' already exists on page {}, updating it", fileName, pageId);
+            return updateAttachmentData(pageId, existingAttachmentId, fileName, fileContent, mimeType);
+        }
+        
+        // Create new attachment
         try {
             // The Confluence v2 attachment upload requires multipart; with Rest Client Reactive it's easier to call the classic endpoint with query filename
             String boundary = "--------------------------" + System.currentTimeMillis();
