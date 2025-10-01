@@ -388,6 +388,33 @@ public class HtmlToAdfConverter {
                 return doc.paragraph(textContent);
             }
         }
+
+        // Cas particulier : paragraphe contenant uniquement des images (ex: <p><img ...></p>)
+        // Le markdown est vide, mais nous devons traiter les images enfants.
+        boolean hasOnlyImages = true;
+        for (org.jsoup.nodes.Node child : element.childNodes()) {
+            if (child instanceof Element) {
+                Element childEl = (Element) child;
+                if (!"img".equalsIgnoreCase(childEl.tagName())) {
+                    hasOnlyImages = false; // autre contenu -> ne pas traiter ici
+                    break;
+                }
+            } else if (child instanceof org.jsoup.nodes.TextNode) {
+                String t = ((org.jsoup.nodes.TextNode) child).text();
+                if (!t.trim().isEmpty()) {
+                    hasOnlyImages = false;
+                    break;
+                }
+            }
+        }
+
+        if (hasOnlyImages) {
+            logger.debug("Paragraph contains only image(s) -> processing each image node individually");
+            for (Element img : element.select(":root > img")) { // seulement images directes
+                doc = processImage(doc, img);
+            }
+            return doc;
+        }
         return doc;
     }
     

@@ -31,6 +31,10 @@ public class DiagramExporter {
     private final String workspaceId;
     private final Path outputDirectory;
     private final int maxDurationSeconds;
+    private final int viewportWidth;
+    private final int viewportHeight;
+    private final double deviceScaleFactor;
+    private final double oversampleFactor;
     
     public DiagramExporter(String structurizrUrl, String username, String password, String workspaceId) {
         this.structurizrUrl = structurizrUrl;
@@ -40,7 +44,12 @@ public class DiagramExporter {
         this.outputDirectory = Paths.get("target", "diagrams");
         // Overall timeout for the diagram export process. Defaults to 300 seconds.
         // Can be overridden with env var PLAYWRIGHT_MAX_DURATION_SECS to accommodate slower environments
-        this.maxDurationSeconds = parseIntEnv("PLAYWRIGHT_MAX_DURATION_SECS", 300);
+    this.maxDurationSeconds = parseIntEnv("PLAYWRIGHT_MAX_DURATION_SECS", 300);
+    // Viewport / quality tuning (env configurable)
+    this.viewportWidth = parseIntEnv("PLAYWRIGHT_VIEWPORT_WIDTH", 1920);
+    this.viewportHeight = parseIntEnv("PLAYWRIGHT_VIEWPORT_HEIGHT", 1080);
+    this.deviceScaleFactor = parseDoubleEnv("PLAYWRIGHT_DEVICE_SCALE", 2.0d); // higher => sharper rasterized SVG
+    this.oversampleFactor = parseDoubleEnv("PLAYWRIGHT_DIAGRAM_OVERSAMPLE", 1.0d); // apply zoom inside diagram if >1
     }
     
     /**
@@ -94,13 +103,15 @@ public class DiagramExporter {
             BrowserContext context;
             
             // Configure to ignore HTTPS errors if SSL verification is disabled
+            Browser.NewContextOptions ctxOptions = new Browser.NewContextOptions()
+                .setViewportSize(viewportWidth, viewportHeight)
+                .setDeviceScaleFactor(deviceScaleFactor);
             if (SslTrustUtils.shouldDisableSslVerification()) {
-                context = browser.newContext(new Browser.NewContextOptions()
-                    .setIgnoreHTTPSErrors(true));
+                ctxOptions.setIgnoreHTTPSErrors(true);
                 logger.warn("HTTPS certificate errors will be ignored in Playwright browser context");
-            } else {
-                context = browser.newContext();
             }
+            context = browser.newContext(ctxOptions);
+            logger.info("Playwright context created (viewport={}x{}, deviceScaleFactor={})", viewportWidth, viewportHeight, deviceScaleFactor);
             
             Page page = context.newPage();
             
@@ -138,6 +149,16 @@ public class DiagramExporter {
             
             logger.info("Found {} views to export", views.size());
             
+            // Optional oversampling (apply internal zoom before screenshot for sharper text if needed)
+            if (oversampleFactor > 1.0d) {
+                try {
+                    structurizrFrame.evaluate("(z) => { try { if (window.structurizr && window.structurizr.scripting && window.structurizr.scripting.setZoom) { window.structurizr.scripting.setZoom(Math.min(400, z*100)); } } catch(e) {} }", oversampleFactor);
+                    logger.info("Applied oversample zoom factor {} inside Structurizr viewer", oversampleFactor);
+                } catch (Exception e) {
+                    logger.warn("Failed to apply oversample zoom factor {}: {}", oversampleFactor, e.getMessage());
+                }
+            }
+
             // Export each view
             int exportCount = 0;
             for (Object viewObj : views) {
@@ -348,7 +369,10 @@ public class DiagramExporter {
             }
             
             if (diagramElement != null) {
-                diagramElement.screenshot(new Locator.ScreenshotOptions().setPath(diagramPath));
+                // High quality screenshot: ensure no background clipping & full element
+                Locator.ScreenshotOptions shotOptions = new Locator.ScreenshotOptions()
+                    .setPath(diagramPath);
+                diagramElement.screenshot(shotOptions);
                 logger.info("Exported diagram for view {} to {}", viewKey, diagramFilename);
             } else {
                 logger.warn("Could not find diagram element for view {}, taking full page screenshot", viewKey);
@@ -422,6 +446,23 @@ public class DiagramExporter {
         } catch (NumberFormatException e) {
             LoggerFactory.getLogger(DiagramExporter.class)
                 .warn("Invalid integer for env {}: '{}'. Using default {}.", name, value, defaultValue);
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Parses a double environment variable with a default value.
+     */
+    private static double parseDoubleEnv(String name, double defaultValue) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException e) {
+            LoggerFactory.getLogger(DiagramExporter.class)
+                .warn("Invalid double for env {}: '{}'. Using default {}.", name, value, defaultValue);
             return defaultValue;
         }
     }
