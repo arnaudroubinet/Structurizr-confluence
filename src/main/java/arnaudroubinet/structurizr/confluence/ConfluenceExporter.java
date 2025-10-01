@@ -563,7 +563,7 @@ public class ConfluenceExporter {
         Document viewsDoc = Document.create();
 
         // Add all exported diagrams from /diagrams page
-        viewsDoc = addExportedDiagrams(viewsDoc);
+        viewsDoc = addExportedDiagrams(viewsDoc, workspace);
 
         // 4) Mettre à jour la page avec le contenu complet
         confluenceClient.updatePageById(viewsPageId, "Views", convertDocumentToJson(viewsDoc));
@@ -596,7 +596,7 @@ public class ConfluenceExporter {
         Document viewsDoc = Document.create();
 
         // Add all exported diagrams from /diagrams page
-        viewsDoc = addExportedDiagrams(viewsDoc);
+        viewsDoc = addExportedDiagrams(viewsDoc, workspace);
 
         confluenceClient.updatePageById(viewsPageId, viewsPageTitle, convertDocumentToJson(viewsDoc));
         logger.info("Created/updated Views page with branch suffix (pageId: {})", viewsPageId);
@@ -608,15 +608,27 @@ public class ConfluenceExporter {
      * all diagrams present on the /diagrams page are included.
      * 
      * @param doc the ADF document to add diagrams to
+     * @param workspace the workspace (used for fallback when local diagrams aren't available)
      * @return the updated document
      */
-    private Document addExportedDiagrams(Document doc) {
-        if (exportedDiagrams == null || exportedDiagrams.isEmpty()) {
-            logger.warn("No exported diagrams available to add to Views page");
-            return doc;
+    private Document addExportedDiagrams(Document doc, Workspace workspace) {
+        // If local diagrams are available, use them
+        if (exportedDiagrams != null && !exportedDiagrams.isEmpty()) {
+            logger.info("Adding {} exported diagrams to Views page from local files", exportedDiagrams.size());
+            return addExportedDiagramsFromFiles(doc);
         }
         
-        logger.info("Adding {} exported diagrams to Views page", exportedDiagrams.size());
+        // Fallback: use workspace views with external URLs when local diagrams aren't available
+        logger.warn("No exported diagrams available, falling back to workspace views with external URLs");
+        return addExportedDiagramsFromWorkspace(doc, workspace);
+    }
+    
+    /**
+     * Adds diagrams from local exported files.
+     */
+    private Document addExportedDiagramsFromFiles(Document doc) {
+        int diagramsAdded = 0;
+        int diagramsSkipped = 0;
         
         for (File diagramFile : exportedDiagrams) {
             String filename = diagramFile.getName();
@@ -627,26 +639,98 @@ public class ConfluenceExporter {
             
             if (viewKey == null) {
                 logger.warn("Could not extract view key from filename: {}", filename);
+                diagramsSkipped++;
                 continue;
             }
             
             // Skip key files (only process main diagram files)
             if (filename.endsWith("-key.png")) {
                 logger.debug("Skipping key file: {}", filename);
+                diagramsSkipped++;
                 continue;
             }
             
-            logger.debug("Adding diagram for view key: {} from file: {}", viewKey, filename);
+            logger.info("Adding diagram for view key: {} from file: {}", viewKey, filename);
             
             // Insert the diagram image via local:diagram:KEY placeholder
             try {
                 String imgHtml = "<p><img src=\"local:diagram:" + viewKey + "\" alt=\"" + viewKey + "\"></p><p>&nbsp;</p>";
+                logger.debug("Creating HTML for diagram: {}", imgHtml);
+                
                 Document imgDoc = htmlToAdfConverter.convertToAdf(imgHtml, viewKey);
+                logger.debug("Converted HTML to ADF, combining with main document");
+                
                 doc = combineDocuments(doc, imgDoc);
+                diagramsAdded++;
+                logger.info("Successfully added diagram {} to Views page", viewKey);
             } catch (Exception e) {
                 logger.warn("Failed to embed image for view {} from file {}", viewKey, filename, e);
+                diagramsSkipped++;
             }
         }
+        
+        logger.info("Completed adding diagrams: {} added, {} skipped", diagramsAdded, diagramsSkipped);
+        
+        return doc;
+    }
+    
+    /**
+     * Adds diagrams from workspace views using external URLs (fallback when local files aren't available).
+     */
+    private Document addExportedDiagramsFromWorkspace(Document doc, Workspace workspace) {
+        int diagramsAdded = 0;
+        
+        ViewSet views = workspace.getViews();
+        Collection<View> allViews = new java.util.ArrayList<>();
+        
+        allViews.addAll(views.getSystemLandscapeViews());
+        allViews.addAll(views.getSystemContextViews());
+        allViews.addAll(views.getContainerViews());
+        allViews.addAll(views.getComponentViews());
+        allViews.addAll(views.getDeploymentViews());
+        
+        if (allViews.isEmpty()) {
+            logger.warn("No views found in workspace to add to Views page");
+            return doc;
+        }
+        
+        logger.info("Adding {} diagrams from workspace views", allViews.size());
+        
+        for (View view : allViews) {
+            try {
+                String viewKey = view.getKey();
+                String title = view.getTitle() != null && !view.getTitle().trim().isEmpty() 
+                    ? view.getTitle() : viewKey;
+                
+                logger.info("Adding diagram for view: {} ({})", viewKey, title);
+                
+                // Build external diagram URL
+                // Format: https://{structurizrUrl}/workspace/{workspaceId}/diagrams/{viewKey}.svg
+                String structurizrUrl = workspace.getProperties().getOrDefault("structurizr.url", "");
+                String workspaceId = getWorkspaceId(workspace);
+                
+                if (structurizrUrl.isEmpty()) {
+                    logger.warn("No Structurizr URL configured, skipping view: {}", viewKey);
+                    continue;
+                }
+                
+                String diagramUrl = structurizrUrl + "/workspace/" + workspaceId + "/diagrams/" + viewKey + ".svg";
+                
+                // Create HTML with external image URL
+                String imgHtml = "<p><img src=\"" + diagramUrl + "\" alt=\"" + title + "\" title=\"" + title + "\"></p><p>&nbsp;</p>";
+                logger.debug("Creating HTML for diagram: {}", imgHtml);
+                
+                Document imgDoc = htmlToAdfConverter.convertToAdf(imgHtml, viewKey);
+                doc = combineDocuments(doc, imgDoc);
+                diagramsAdded++;
+                logger.info("Successfully added diagram {} to Views page", viewKey);
+                
+            } catch (Exception e) {
+                logger.warn("Failed to add diagram for view: {}", view.getKey(), e);
+            }
+        }
+        
+        logger.info("Completed adding {} diagrams from workspace views", diagramsAdded);
         
         return doc;
     }
