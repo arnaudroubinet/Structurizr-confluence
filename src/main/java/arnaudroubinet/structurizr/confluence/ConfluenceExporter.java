@@ -566,7 +566,11 @@ public class ConfluenceExporter {
         viewsDoc = addExportedDiagrams(viewsDoc);
 
         // 4) Mettre à jour la page avec le contenu complet
-        confluenceClient.updatePageById(viewsPageId, "Views", convertDocumentToJson(viewsDoc));
+        String viewsJson = convertDocumentToJson(viewsDoc);
+        logger.info("Views page document JSON length: {} characters", viewsJson.length());
+        logger.debug("Views page document JSON: {}", viewsJson);
+        
+        confluenceClient.updatePageById(viewsPageId, "Views", viewsJson);
         logger.info("Created/updated single Views page with all diagrams (pageId: {})", viewsPageId);
     }
     
@@ -598,7 +602,11 @@ public class ConfluenceExporter {
         // Add all exported diagrams from /diagrams page
         viewsDoc = addExportedDiagrams(viewsDoc);
 
-        confluenceClient.updatePageById(viewsPageId, viewsPageTitle, convertDocumentToJson(viewsDoc));
+        String viewsJson = convertDocumentToJson(viewsDoc);
+        logger.info("Views page document JSON length: {} characters", viewsJson.length());
+        logger.debug("Views page document JSON: {}", viewsJson);
+        
+        confluenceClient.updatePageById(viewsPageId, viewsPageTitle, viewsJson);
         logger.info("Created/updated Views page with branch suffix (pageId: {})", viewsPageId);
     }
 
