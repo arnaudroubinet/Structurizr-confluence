@@ -200,6 +200,35 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- Google Java Format plugin for code formatting -->
+            <plugin>
+                <groupId>com.spotify.fmt</groupId>
+                <artifactId>fmt-maven-plugin</artifactId>
+                <version>2.29</version>
+                <configuration>
+                    <style>google</style>
+                    <verbose>true</verbose>
+                    <skipSortingImports>false</skipSortingImports>
+                    <sourceDirectory>src/main/java</sourceDirectory>
+                    <testSourceDirectory>src/test/java</testSourceDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>format-sources</id>
+                        <goals>
+                            <goal>format</goal>
+                        </goals>
+                        <phase>process-sources</phase>
+                    </execution>
+                    <execution>
+                        <id>check-formatting</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <phase>verify</phase>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- SpotBugs plugin for code analysis and dead code detection -->
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
