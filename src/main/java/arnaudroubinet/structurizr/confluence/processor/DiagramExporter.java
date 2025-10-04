@@ -20,6 +20,16 @@ import org.slf4j.LoggerFactory;
 public class DiagramExporter {
   private static final Logger logger = LoggerFactory.getLogger(DiagramExporter.class);
 
+  private static final int DEFAULT_MAX_DURATION_SECONDS = 300;
+  private static final int DEFAULT_VIEWPORT_WIDTH = 1920;
+  private static final int DEFAULT_VIEWPORT_HEIGHT = 1080;
+  private static final double DEFAULT_DEVICE_SCALE_FACTOR = 2.0;
+  private static final double DEFAULT_OVERSAMPLE_FACTOR = 1.0;
+  private static final int FRAME_WAIT_TIMEOUT_MS = 60000;
+  private static final int AUTH_WAIT_TIMEOUT_MS = 20000;
+  private static final int FRAME_CHECK_INTERVAL_MS = 500;
+  private static final int DIAGRAM_RENDER_WAIT_MS = 2000;
+
   private final String structurizrUrl;
   private final String username;
   private final String password;
@@ -38,17 +48,13 @@ public class DiagramExporter {
     this.password = password;
     this.workspaceId = workspaceId;
     this.outputDirectory = Paths.get("target", "diagrams");
-    // Overall timeout for the diagram export process. Defaults to 300 seconds.
-    // Can be overridden with env var PLAYWRIGHT_MAX_DURATION_SECS to accommodate slower
-    // environments
-    this.maxDurationSeconds = parseIntEnv("PLAYWRIGHT_MAX_DURATION_SECS", 300);
-    // Viewport / quality tuning (env configurable)
-    this.viewportWidth = parseIntEnv("PLAYWRIGHT_VIEWPORT_WIDTH", 1920);
-    this.viewportHeight = parseIntEnv("PLAYWRIGHT_VIEWPORT_HEIGHT", 1080);
-    this.deviceScaleFactor =
-        parseDoubleEnv("PLAYWRIGHT_DEVICE_SCALE", 2.0d); // higher => sharper rasterized SVG
+    this.maxDurationSeconds =
+        parseIntEnv("PLAYWRIGHT_MAX_DURATION_SECS", DEFAULT_MAX_DURATION_SECONDS);
+    this.viewportWidth = parseIntEnv("PLAYWRIGHT_VIEWPORT_WIDTH", DEFAULT_VIEWPORT_WIDTH);
+    this.viewportHeight = parseIntEnv("PLAYWRIGHT_VIEWPORT_HEIGHT", DEFAULT_VIEWPORT_HEIGHT);
+    this.deviceScaleFactor = parseDoubleEnv("PLAYWRIGHT_DEVICE_SCALE", DEFAULT_DEVICE_SCALE_FACTOR);
     this.oversampleFactor =
-        parseDoubleEnv("PLAYWRIGHT_DIAGRAM_OVERSAMPLE", 1.0d); // apply zoom inside diagram if >1
+        parseDoubleEnv("PLAYWRIGHT_DIAGRAM_OVERSAMPLE", DEFAULT_OVERSAMPLE_FACTOR);
   }
 
   /**
@@ -147,17 +153,18 @@ public class DiagramExporter {
       Frame structurizrFrame = findStructurizrFrame(page);
       if (structurizrFrame == null) {
         throw new IOException(
-            "Could not find Structurizr frame after waiting 60 seconds. "
+            "Could not find Structurizr frame after waiting "
+                + (FRAME_WAIT_TIMEOUT_MS / 1000)
+                + " seconds. "
                 + "This usually indicates that the Structurizr workspace is not loading properly. "
                 + "Check that the workspace URL is correct and accessible: "
                 + viewerUrl);
       }
 
-      // Wait for diagrams to be rendered
       structurizrFrame.waitForFunction(
           "() => window.structurizr && window.structurizr.scripting && window.structurizr.scripting.isDiagramRendered && window.structurizr.scripting.isDiagramRendered() === true",
           null,
-          new Frame.WaitForFunctionOptions().setTimeout(60000));
+          new Frame.WaitForFunctionOptions().setTimeout(FRAME_WAIT_TIMEOUT_MS));
 
       // Get views from Structurizr
       Object viewsResult =
@@ -168,7 +175,7 @@ public class DiagramExporter {
       logger.info("Found {} views to export", views.size());
 
       // Optional oversampling (apply internal zoom before screenshot for sharper text if needed)
-      if (oversampleFactor > 1.0d) {
+      if (oversampleFactor > 1.0) {
         try {
           structurizrFrame.evaluate(
               "(z) => { try { if (window.structurizr && window.structurizr.scripting && window.structurizr.scripting.setZoom) { window.structurizr.scripting.setZoom(Math.min(400, z*100)); } } catch(e) {} }",
@@ -196,10 +203,8 @@ public class DiagramExporter {
     return exportedFiles;
   }
 
-  /** Sign in to Structurizr. */
   private void signIn(Page page, String workspaceUrl) throws IOException {
     try {
-      // Extract base URL for sign in
       String[] parts = workspaceUrl.split("://");
       String host = parts[0] + "://" + parts[1].substring(0, parts[1].indexOf('/'));
       String signinUrl = host + "/signin";
@@ -207,7 +212,6 @@ public class DiagramExporter {
       logger.info("Signing in via: {}", signinUrl);
       page.navigate(signinUrl);
 
-      // Try to find username/email field
       Locator usernameField = null;
       String[] userSelectors = {
         "#username",
@@ -227,7 +231,6 @@ public class DiagramExporter {
         }
       }
 
-      // Try to find password field
       Locator passwordField = null;
       String[] passSelectors = {
         "#password", "input[name=\"password\"]", "input[type=\"password\"]"
@@ -250,11 +253,9 @@ public class DiagramExporter {
         return;
       }
 
-      // Fill credentials
       usernameField.fill(username);
       passwordField.fill(password);
 
-      // Submit form
       try {
         String[] submitSelectors = {"button[type=\"submit\"]", "input[type=\"submit\"]"};
         boolean clicked = false;
@@ -273,11 +274,10 @@ public class DiagramExporter {
           passwordField.press("Enter");
         }
 
-        // Wait for redirect away from signin
         page.waitForFunction(
             "() => !location.pathname.includes('/signin')",
             null,
-            new Page.WaitForFunctionOptions().setTimeout(20000));
+            new Page.WaitForFunctionOptions().setTimeout(AUTH_WAIT_TIMEOUT_MS));
 
       } catch (Exception e) {
         logger.warn("Authentication might have failed: {}", e.getMessage());
@@ -288,15 +288,12 @@ public class DiagramExporter {
     }
   }
 
-  /** Find the frame containing Structurizr scripting. */
   private Frame findStructurizrFrame(Page page) {
-    int maxWaitTime = 60000; // 60 seconds
-    int checkInterval = 500; // 0.5 seconds
     long startTime = System.currentTimeMillis();
 
     logger.debug("Searching for Structurizr frame on page: {}", page.url());
 
-    while (System.currentTimeMillis() - startTime < maxWaitTime) {
+    while (System.currentTimeMillis() - startTime < FRAME_WAIT_TIMEOUT_MS) {
       List<Frame> frames = page.frames();
       logger.debug("Found {} frames on page", frames.size());
 
@@ -308,7 +305,6 @@ public class DiagramExporter {
             logger.info("Found Structurizr frame");
             return frame;
           } else {
-            // Check what's available in the frame for debugging
             try {
               Object structurizrExists = frame.evaluate("() => !!window.structurizr");
               Object scriptingExists =
@@ -324,23 +320,21 @@ public class DiagramExporter {
             }
           }
         } catch (Exception ignored) {
-          // Frame might not be ready yet
           logger.debug("Frame evaluation failed for {}: {}", frame.url(), ignored.getMessage());
         }
       }
 
       try {
-        Thread.sleep(checkInterval);
+        Thread.sleep(FRAME_CHECK_INTERVAL_MS);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         break;
       }
     }
 
-    // Provide detailed diagnostics when frame is not found
     logger.warn(
         "Could not find Structurizr frame after {} seconds. Page URL: {}",
-        maxWaitTime / 1000,
+        FRAME_WAIT_TIMEOUT_MS / 1000,
         page.url());
     List<Frame> finalFrames = page.frames();
     logger.warn("Final state: {} frames found", finalFrames.size());
@@ -374,20 +368,15 @@ public class DiagramExporter {
 
       logger.info("Exporting view: {} (type: {})", viewKey, viewType);
 
-      // Change to the view
       structurizrFrame.evaluate("(v) => window.structurizr.scripting.changeView(v)", viewKey);
 
-      // Wait for diagram to be rendered
-      Thread.sleep(2000); // Give it time to render
+      Thread.sleep(DIAGRAM_RENDER_WAIT_MS);
 
       int exportCount = 0;
 
-      // Export diagram
       String diagramFilename = "structurizr-" + workspaceId + "-" + viewKey + ".png";
       Path diagramPath = outputDirectory.resolve(diagramFilename);
 
-      // Take screenshot of only the diagram SVG element for a cleaner export
-      // Try multiple selectors in order of preference
       Locator diagramElement = null;
       String[] selectors = {
         "svg#canvas", // Most specific - the actual diagram canvas
@@ -413,7 +402,6 @@ public class DiagramExporter {
       }
 
       if (diagramElement != null) {
-        // High quality screenshot: ensure no background clipping & full element
         Locator.ScreenshotOptions shotOptions =
             new Locator.ScreenshotOptions().setPath(diagramPath);
         diagramElement.screenshot(shotOptions);
@@ -427,14 +415,10 @@ public class DiagramExporter {
       exportedFiles.add(diagramPath.toFile());
       exportCount++;
 
-      // Export key if not an image view
       if (!"Image".equals(viewType)) {
         String keyFilename = "structurizr-" + workspaceId + "-" + viewKey + "-key.png";
         Path keyPath = outputDirectory.resolve(keyFilename);
 
-        // For the key, we'd need to find the key element and screenshot it
-        // This is a simplified implementation - you might need to locate the key element
-        // specifically
         try {
           Locator keyElement =
               structurizrFrame.locator(".structurizrKey, .key, [class*='key']").first();
@@ -457,14 +441,10 @@ public class DiagramExporter {
     }
   }
 
-  /** Extract a property from a view object (simplified implementation). */
   private String extractViewProperty(Object viewObj, String property) {
     try {
-      // In a real implementation, you'd properly parse the JavaScript object
-      // This is a simplified version that assumes string representation parsing
       String viewStr = viewObj.toString();
       if (viewStr.contains(property + "=")) {
-        // Basic parsing - in production you'd want proper JSON handling
         String[] parts = viewStr.split(property + "=");
         if (parts.length > 1) {
           String value = parts[1].split("[,}]")[0].trim();
@@ -478,7 +458,6 @@ public class DiagramExporter {
     }
   }
 
-  /** Parses an integer environment variable with a default value. */
   private static int parseIntEnv(String name, int defaultValue) {
     String value = System.getenv(name);
     if (value == null || value.isBlank()) {
@@ -493,7 +472,6 @@ public class DiagramExporter {
     }
   }
 
-  /** Parses a double environment variable with a default value. */
   private static double parseDoubleEnv(String name, double defaultValue) {
     String value = System.getenv(name);
     if (value == null || value.isBlank()) {
@@ -517,15 +495,10 @@ public class DiagramExporter {
     return outputDirectory;
   }
 
-  /**
-   * Cleans up exported diagram files.
-   *
-   * @throws IOException if cleanup fails
-   */
   public void cleanup() throws IOException {
     if (Files.exists(outputDirectory)) {
       Files.walk(outputDirectory)
-          .sorted((path1, path2) -> path2.compareTo(path1)) // Delete files before directories
+          .sorted((path1, path2) -> path2.compareTo(path1))
           .forEach(
               path -> {
                 try {

@@ -25,7 +25,6 @@ class PlaywrightBrowserUsageTest {
   void testOnlyChromiumIsUsedInDiagramExporter() throws IOException {
     logger.info("=== Verifying Playwright browser usage ===");
 
-    // Read the DiagramExporter source file
     Path sourceFile =
         Paths.get(
             "src/main/java/arnaudroubinet/structurizr/confluence/processor/DiagramExporter.java");
@@ -41,20 +40,15 @@ class PlaywrightBrowserUsageTest {
 
     String sourceCode = content.toString();
 
-    // Verify that chromium() is used
-    assertTrue(
-        sourceCode.contains("playwright.chromium()"),
-        "DiagramExporter should use playwright.chromium()");
+    assertTrue(sourceCode.contains(".chromium()"), "DiagramExporter should use .chromium()");
 
-    // Verify that firefox() is NOT used
     assertFalse(
-        sourceCode.contains("playwright.firefox()"),
-        "DiagramExporter should NOT use playwright.firefox() - only chromium is needed");
+        sourceCode.contains(".firefox()"),
+        "DiagramExporter should NOT use .firefox() - only chromium is needed");
 
-    // Verify that webkit() is NOT used
     assertFalse(
-        sourceCode.contains("playwright.webkit()"),
-        "DiagramExporter should NOT use playwright.webkit() - only chromium is needed");
+        sourceCode.contains(".webkit()"),
+        "DiagramExporter should NOT use .webkit() - only chromium is needed");
 
     logger.info("✅ Verified: Only Chromium browser is used");
     logger.info(
@@ -66,7 +60,6 @@ class PlaywrightBrowserUsageTest {
   void testGitHubWorkflowUsesChromiumOnly() throws IOException {
     logger.info("=== Verifying GitHub Actions workflow ===");
 
-    // Read the CI workflow file
     Path workflowFile = Paths.get(".github/workflows/ci.yml");
     assertTrue(workflowFile.toFile().exists(), "ci.yml should exist");
 
@@ -80,13 +73,10 @@ class PlaywrightBrowserUsageTest {
 
     String workflowContent = content.toString();
 
-    // Verify that the workflow installs chromium specifically
     assertTrue(
         workflowContent.contains("install --with-deps chromium"),
         "GitHub Actions workflow should install only chromium browser");
 
-    // Verify that it doesn't install all browsers (which would be "install --with-deps" without
-    // browser name)
     assertFalse(
         workflowContent.matches(".*install --with-deps\"\\s*$.*"),
         "GitHub Actions workflow should not install all browsers by default");

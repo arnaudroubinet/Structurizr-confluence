@@ -92,7 +92,7 @@ public class AsciiDocConverter {
     } catch (Exception e) {
       logger.error("Error converting AsciiDoc to HTML for document: {}", title, e);
       throw new IllegalStateException(
-          "Conversion AsciiDoc -> HTML échouée: " + (title != null ? title : "(sans titre)"), e);
+          "AsciiDoc to HTML conversion failed: " + (title != null ? title : "(no title)"), e);
     }
   }
 
@@ -141,8 +141,8 @@ public class AsciiDocConverter {
     } catch (Exception e) {
       logger.error("Error converting AsciiDoc to HTML with attributes for document: {}", title, e);
       throw new IllegalStateException(
-          "Conversion AsciiDoc -> HTML (avec attributs) échouée: "
-              + (title != null ? title : "(sans titre)"),
+          "AsciiDoc to HTML conversion with attributes failed: "
+              + (title != null ? title : "(no title)"),
           e);
     }
   }
