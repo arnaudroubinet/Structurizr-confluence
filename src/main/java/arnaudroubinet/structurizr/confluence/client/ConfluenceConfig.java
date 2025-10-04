@@ -1,19 +1,14 @@
 package arnaudroubinet.structurizr.confluence.client;
 
-/** Configuration for connecting to Confluence Cloud. */
-public class ConfluenceConfig {
-
-  private final String baseUrl;
-  private final String username;
-  private final String apiToken;
-  private final String spaceKey;
-
-  public ConfluenceConfig(String baseUrl, String username, String apiToken, String spaceKey) {
-    this.baseUrl = baseUrl;
-    this.username = username;
-    this.apiToken = apiToken;
-    this.spaceKey = spaceKey;
-  }
+/**
+ * Configuration for connecting to Confluence Cloud.
+ *
+ * @param baseUrl Confluence base URL
+ * @param username Username for authentication
+ * @param apiToken API token for authentication
+ * @param spaceKey Confluence space key
+ */
+public record ConfluenceConfig(String baseUrl, String username, String apiToken, String spaceKey) {
 
   public String getBaseUrl() {
     return baseUrl;

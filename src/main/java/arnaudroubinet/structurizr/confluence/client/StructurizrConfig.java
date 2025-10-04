@@ -1,25 +1,19 @@
 package arnaudroubinet.structurizr.confluence.client;
 
-/** Configuration for connecting to a Structurizr on-premise instance. */
-public class StructurizrConfig {
-
-  private final String apiUrl;
-  private final String apiKey;
-  private final String apiSecret;
-  private final long workspaceId;
-  private final boolean debugMode;
+/**
+ * Configuration for connecting to a Structurizr on-premise instance.
+ *
+ * @param apiUrl Structurizr API URL
+ * @param apiKey API key for authentication
+ * @param apiSecret API secret for authentication
+ * @param workspaceId Workspace ID to load
+ * @param debugMode Enable debug mode for detailed logging
+ */
+public record StructurizrConfig(
+    String apiUrl, String apiKey, String apiSecret, long workspaceId, boolean debugMode) {
 
   public StructurizrConfig(String apiUrl, String apiKey, String apiSecret, long workspaceId) {
     this(apiUrl, apiKey, apiSecret, workspaceId, false);
-  }
-
-  public StructurizrConfig(
-      String apiUrl, String apiKey, String apiSecret, long workspaceId, boolean debugMode) {
-    this.apiUrl = apiUrl;
-    this.apiKey = apiKey;
-    this.apiSecret = apiSecret;
-    this.workspaceId = workspaceId;
-    this.debugMode = debugMode;
   }
 
   public String getApiUrl() {
