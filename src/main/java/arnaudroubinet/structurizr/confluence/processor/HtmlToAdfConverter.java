@@ -24,6 +24,8 @@ public class HtmlToAdfConverter {
 
   private static final Logger logger = LoggerFactory.getLogger(HtmlToAdfConverter.class);
   private static final ObjectMapper objectMapper = new ObjectMapper();
+  private static final String HTTP_PROTOCOL = "http://";
+  private static final String HTTPS_PROTOCOL = "https://";
 
   private ImageUploadManager imageUploadManager;
   private String currentPageId;
@@ -380,8 +382,8 @@ public class HtmlToAdfConverter {
 
   private boolean containsLinks(String markdownContent) {
     return markdownContent.contains("[") && markdownContent.contains("](")
-        || markdownContent.contains("http://")
-        || markdownContent.contains("https://");
+        || markdownContent.contains(HTTP_PROTOCOL)
+        || markdownContent.contains(HTTPS_PROTOCOL);
   }
 
   private Document addMarkdownContentToDocument(Document doc, String markdownContent) {
@@ -1414,7 +1416,7 @@ public class HtmlToAdfConverter {
 
   /** Checks if a URL is external (http/https) or local/relative. */
   private boolean isExternalUrl(String url) {
-    return url.startsWith("http://") || url.startsWith("https://");
+    return url.startsWith(HTTP_PROTOCOL) || url.startsWith(HTTPS_PROTOCOL);
   }
 
   /**
