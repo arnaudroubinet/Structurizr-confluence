@@ -4,6 +4,7 @@ import arnaudroubinet.structurizr.confluence.client.ConfluenceClient;
 import arnaudroubinet.structurizr.confluence.client.ConfluenceConfig;
 import arnaudroubinet.structurizr.confluence.client.StructurizrConfig;
 import arnaudroubinet.structurizr.confluence.client.StructurizrWorkspaceLoader;
+import arnaudroubinet.structurizr.confluence.exporter.AdrExporter;
 import arnaudroubinet.structurizr.confluence.generator.DocumentGenerator;
 import arnaudroubinet.structurizr.confluence.processor.AsciiDocConverter;
 import arnaudroubinet.structurizr.confluence.processor.DiagramExporter;
@@ -17,11 +18,9 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.structurizr.Workspace;
 import com.structurizr.api.StructurizrClientException;
-import com.structurizr.documentation.Decision;
 import com.structurizr.model.*;
 import com.structurizr.view.*;
 import java.io.File;
-import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -49,6 +48,7 @@ public class ConfluenceExporter {
   private final AsciiDocConverter asciiDocConverter;
   private final MarkdownConverter markdownConverter;
   private final DocumentGenerator documentGenerator;
+  private final AdrExporter adrExporter;
   private List<File> exportedDiagrams;
 
   /** Creates an exporter that loads workspaces from a Structurizr on-premise instance. */
@@ -61,6 +61,13 @@ public class ConfluenceExporter {
     this.asciiDocConverter = new AsciiDocConverter();
     this.markdownConverter = new MarkdownConverter();
     this.documentGenerator = new DocumentGenerator();
+    this.adrExporter =
+        new AdrExporter(
+            confluenceClient,
+            objectMapper,
+            htmlToAdfConverter,
+            asciiDocConverter,
+            markdownConverter);
   }
 
   /** Creates an exporter for use with provided workspace objects (original behavior). */
@@ -72,6 +79,13 @@ public class ConfluenceExporter {
     this.asciiDocConverter = new AsciiDocConverter();
     this.markdownConverter = new MarkdownConverter();
     this.documentGenerator = new DocumentGenerator();
+    this.adrExporter =
+        new AdrExporter(
+            confluenceClient,
+            objectMapper,
+            htmlToAdfConverter,
+            asciiDocConverter,
+            markdownConverter);
   }
 
   /**
@@ -237,7 +251,7 @@ public class ConfluenceExporter {
     exportAllViewsSinglePage(workspace, mainPageId);
 
     // Générer les ADRs
-    exportDecisions(workspace, mainPageId, branchName);
+    adrExporter.exportDecisions(workspace, mainPageId, branchName);
 
     logger.info("Workspace export completed successfully");
   }
@@ -403,7 +417,7 @@ public class ConfluenceExporter {
     exportAllViewsSinglePage(workspace, branchPageId, branchName);
 
     // Create ADRs under branch page with branch suffix
-    exportDecisions(workspace, branchPageId, branchName);
+    adrExporter.exportDecisions(workspace, branchPageId, branchName);
 
     logger.info("Workspace export completed successfully");
   }
@@ -767,103 +781,6 @@ public class ConfluenceExporter {
     return nameWithoutExt.substring(secondDash + 1);
   }
 
-  private void exportDecisions(Workspace workspace, String parentPageId, String branchName)
-      throws Exception {
-    if (workspace.getDocumentation() == null
-        || workspace.getDocumentation().getDecisions().isEmpty()) {
-      logger.info("No architecture decision records found in workspace");
-      return;
-    }
-
-    Collection<Decision> decisions = workspace.getDocumentation().getDecisions();
-    logger.info("Exporting {} architecture decision records", decisions.size());
-
-    // Create main ADR page (sans H1 dupliqué, laisser Confluence gérer le titre)
-    Document adrMainDoc =
-        Document.create()
-            .paragraph("This page contains all architecture decision records for this project.");
-
-    String adrMainPageTitle = "Architecture Decision Records - " + branchName;
-    String adrMainPageId =
-        confluenceClient.createOrUpdatePage(
-            adrMainPageTitle, convertDocumentToJson(adrMainDoc), parentPageId);
-    logger.info("Created/updated main ADR page with ID: {}", adrMainPageId);
-
-    // Create individual ADR pages
-    for (Decision decision : decisions) {
-      exportDecision(decision, adrMainPageId, workspace, branchName);
-    }
-  }
-
-  private void exportDecision(
-      Decision decision, String parentPageId, Workspace workspace, String branchName)
-      throws Exception {
-    Document decisionDoc = Document.create();
-
-    // Add decision metadata
-    decisionDoc.h2("Decision Information");
-    decisionDoc.bulletList(
-        list -> {
-          list.item("ID: " + decision.getId());
-          list.item("Title: " + decision.getTitle());
-
-          if (decision.getStatus() != null && !decision.getStatus().trim().isEmpty()) {
-            list.item("Status: " + decision.getStatus());
-          }
-
-          if (decision.getDate() != null) {
-            list.item("Date: " + decision.getDate().toString());
-          }
-        });
-
-    // Add decision content (convert from AsciiDoc/Markdown if needed)
-    if (decision.getContent() != null && !decision.getContent().trim().isEmpty()) {
-      decisionDoc.h2("Content");
-
-      String formatName = decision.getFormat() != null ? decision.getFormat().name() : "";
-      String htmlContent;
-
-      if (isAsciiDocFormat(formatName)) {
-        logger.debug("Converting AsciiDoc content for ADR: {}", decision.getTitle());
-        String workspaceId = getWorkspaceId(workspace);
-        htmlContent =
-            asciiDocConverter.convertToHtml(
-                decision.getContent(), "ADR " + decision.getId(), workspaceId, branchName);
-      } else if (isMarkdownFormat(formatName)) {
-        logger.debug("Converting Markdown content for ADR: {}", decision.getTitle());
-        htmlContent = markdownConverter.toHtml(decision.getContent());
-      } else {
-        logger.debug(
-            "Treating content as HTML for ADR: {} (format: {})", decision.getTitle(), formatName);
-        htmlContent = decision.getContent(); // Assume HTML ou texte brut
-      }
-
-      // Convert HTML content to structured ADF instead of plain text
-      Document convertedContent = htmlToAdfConverter.convertToAdf(htmlContent, "Content");
-      decisionDoc = combineDocuments(decisionDoc, convertedContent);
-    }
-
-    // Add links to other decisions
-    if (!decision.getLinks().isEmpty()) {
-      decisionDoc.h2("Related Decisions");
-      decisionDoc.bulletList(
-          list -> {
-            decision
-                .getLinks()
-                .forEach(
-                    link -> {
-                      String linkText = link.getDescription() + " (ID: " + link.getId() + ")";
-                      list.item(linkText);
-                    });
-          });
-    }
-
-    String pageTitle = "ADR " + decision.getId() + " - " + decision.getTitle();
-    confluenceClient.createOrUpdatePage(
-        pageTitle, convertDocumentToJson(decisionDoc), parentPageId);
-    logger.info("Created/updated ADR page: {}", pageTitle);
-  }
-
   /**
    * Gets the exported diagram file for a given view key.
    *
@@ -923,34 +840,6 @@ public class ConfluenceExporter {
     // Get ID from workspace - it's a long, so convert to string
     long workspaceId = workspace.getId();
     return String.valueOf(workspaceId);
-  }
-
-  /** Combines two ADF documents by merging their content. */
-  private Document combineDocuments(Document base, Document addition) {
-    try {
-      ObjectNode baseNode = objectMapper.valueToTree(base);
-      ObjectNode addNode = objectMapper.valueToTree(addition);
-
-      ArrayNode baseContent;
-      JsonNode baseContentNode = baseNode.get("content");
-      if (baseContentNode != null && baseContentNode.isArray()) {
-        baseContent = (ArrayNode) baseContentNode;
-      } else {
-        baseContent = baseNode.putArray("content");
-      }
-
-      JsonNode addContentNode = addNode.get("content");
-      if (addContentNode != null && addContentNode.isArray()) {
-        for (JsonNode child : addContentNode) {
-          baseContent.add(child);
-        }
-      }
-
-      return objectMapper.treeToValue(baseNode, Document.class);
-    } catch (Exception e) {
-      logger.warn("Failed to merge ADF documents, keeping base content only", e);
-      return base;
-    }
   }
 
   /**
