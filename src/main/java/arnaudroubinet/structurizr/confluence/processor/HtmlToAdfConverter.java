@@ -112,56 +112,38 @@ public class HtmlToAdfConverter {
     }
   }
 
-  /**
-   * Converts HTML content to ADF document without post-processing (used by convertToAdfJson).
-   *
-   * @param htmlContent the HTML content to convert
-   * @param title the document title
-   * @return ADF document
-   */
   private Document convertToAdfWithoutPostProcessing(String htmlContent, String title) {
     logger.debug("Converting HTML content to ADF without post-processing for document: {}", title);
 
     try {
       Document doc = Document.create();
 
-      // Parse HTML content and convert to ADF (no title added - Confluence handles page titles)
       doc = processHtmlContent(doc, htmlContent);
 
-      // Return without post-processing
       logger.debug("Successfully converted HTML to ADF document (without post-processing)");
       return doc;
 
     } catch (Exception e) {
       logger.error("Error converting HTML to ADF", e);
-      throw new IllegalStateException("Conversion HTML vers ADF échouée (sans post-traitement)", e);
+      throw new IllegalStateException("HTML to ADF conversion failed (without post-processing)", e);
     }
   }
 
-  /**
-   * Processes HTML content and converts it to ADF elements using JSoup parser.
-   *
-   * @param doc the ADF document
-   * @param htmlContent the HTML content to process
-   * @return updated ADF document
-   */
   private Document processHtmlContent(Document doc, String htmlContent) {
     if (htmlContent == null || htmlContent.trim().isEmpty()) {
       return doc;
     }
 
     try {
-      // Parse HTML with JSoup
       org.jsoup.nodes.Document htmlDoc = Jsoup.parse(htmlContent);
 
-      // Process all elements in the body
       for (Element element : htmlDoc.body().children()) {
         doc = processElement(doc, element);
       }
 
     } catch (Exception e) {
       logger.warn("Error parsing HTML with JSoup", e);
-      throw new IllegalStateException("Parsing HTML échoué", e);
+      throw new IllegalStateException("HTML parsing failed", e);
     }
 
     return doc;
@@ -374,7 +356,7 @@ public class HtmlToAdfConverter {
       if (child instanceof Element) {
         Element childEl = (Element) child;
         if (!"img".equalsIgnoreCase(childEl.tagName())) {
-          hasOnlyImages = false; // autre contenu -> ne pas traiter ici
+          hasOnlyImages = false;
           break;
         }
       } else if (child instanceof org.jsoup.nodes.TextNode) {
@@ -388,7 +370,7 @@ public class HtmlToAdfConverter {
 
     if (hasOnlyImages) {
       logger.debug("Paragraph contains only image(s) -> processing each image node individually");
-      for (Element img : element.select(":root > img")) { // seulement images directes
+      for (Element img : element.select(":root > img")) {
         doc = processImage(doc, img);
       }
       return doc;
@@ -396,54 +378,35 @@ public class HtmlToAdfConverter {
     return doc;
   }
 
-  /** Vérifie si le contenu markdown contient des liens. */
   private boolean containsLinks(String markdownContent) {
-    // Détection simple des liens markdown [text](url) ou des URLs directes
     return markdownContent.contains("[") && markdownContent.contains("](")
         || markdownContent.contains("http://")
         || markdownContent.contains("https://");
   }
 
-  /**
-   * Ajoute le contenu markdown au document en préservant les liens. Utilise une approche hybride
-   * pour éviter la perte de contenu.
-   */
   private Document addMarkdownContentToDocument(Document doc, String markdownContent) {
     try {
-      // Pour l'instant, extraire les liens et les formater comme "text (url)"
-      // puis ajouter comme paragraphe simple
-      // TODO: Implémenter le support complet des liens ADF natifs
       String processedContent = processLinksForFallback(markdownContent);
       return doc.paragraph(processedContent);
 
     } catch (Exception e) {
-      logger.warn("Erreur lors du traitement des liens, utilisation du texte brut", e);
-      // Fallback vers le texte brut
+      logger.warn("Error processing links, using plain text", e);
       return doc.paragraph(cleanText(markdownContent));
     }
   }
 
-  /**
-   * Traite les liens markdown pour un affichage de secours lisible. Convertit [text](url) en "text
-   * (url)" pour préserver l'information.
-   */
   private String processLinksForFallback(String markdownContent) {
-    // Remplacer les liens markdown [text](url) par "text (url)"
     String processed = markdownContent.replaceAll("\\[([^\\]]+)\\]\\(([^\\)]+)\\)", "$1 ($2)");
 
-    // Nettoyer le contenu
     return cleanText(processed);
   }
 
-  /** Convertit un élément HTML en Markdown pour préserver les liens. */
   private String convertElementToMarkdown(Element element) {
     StringBuilder markdown = new StringBuilder();
 
     for (org.jsoup.nodes.Node child : element.childNodes()) {
       if (child instanceof org.jsoup.nodes.TextNode) {
-        // Nœud de texte direct - PRÉSERVER les espaces !
         String text = ((org.jsoup.nodes.TextNode) child).text();
-        // Ne PAS nettoyer le texte pour préserver les espaces
         markdown.append(text);
       } else if (child instanceof Element) {
         Element childElement = (Element) child;
@@ -514,13 +477,10 @@ public class HtmlToAdfConverter {
   private Document processNumberedList(Document doc, Element element) {
     Elements listItems = element.select("li");
     if (!listItems.isEmpty()) {
-      // Use native ADF orderedList au lieu de bulletList avec numéros manuels
       return doc.orderedList(
           list -> {
             for (Element li : listItems) {
-              // Traiter le contenu de l'élément li
               if (hasInlineFormatting(li)) {
-                // Traiter le formatage inline avec les marks natifs
                 try {
                   List<Text> textNodes = new ArrayList<>();
                   for (org.jsoup.nodes.Node child : li.childNodes()) {
@@ -530,13 +490,12 @@ public class HtmlToAdfConverter {
                   list.item(item -> item.paragraph(textArray));
                 } catch (Exception e) {
                   logger.warn(
-                      "Erreur lors du formatage natif pour item de liste ordonnée, fallback vers texte simple",
+                      "Error with native formatting for ordered list item, fallback to plain text",
                       e);
                   String itemText = getElementText(li);
                   list.item(item -> item.paragraph(itemText));
                 }
               } else {
-                // Texte simple
                 String itemText = getElementText(li);
                 list.item(item -> item.paragraph(itemText));
               }
@@ -629,12 +588,11 @@ public class HtmlToAdfConverter {
 
       tableNode.set("content", tableContent);
 
-      // Inject the native table into the document using reflection
       return injectNativeAdfNode(result, tableNode);
 
     } catch (Exception e) {
       logger.warn("Error processing table as native ADF", e);
-      throw new IllegalStateException("Traitement de tableau ADF natif échoué", e);
+      throw new IllegalStateException("Native ADF table processing failed", e);
     }
   }
 
@@ -704,14 +662,11 @@ public class HtmlToAdfConverter {
     // Use native ADF blockquote au lieu de paragraphe avec préfixe
     return doc.quote(
         quote -> {
-          // Traiter récursivement le contenu du blockquote
           for (Element child : element.children()) {
             String tagName = child.tagName().toLowerCase();
 
-            // Traiter différents types de contenu dans la citation
             switch (tagName) {
               case "p":
-                // Paragraphe dans la citation
                 if (hasInlineFormatting(child)) {
                   try {
                     List<Text> textNodes = new ArrayList<>();
@@ -722,8 +677,7 @@ public class HtmlToAdfConverter {
                     quote.paragraph(textArray);
                   } catch (Exception e) {
                     logger.warn(
-                        "Erreur lors du formatage natif pour blockquote, fallback vers texte simple",
-                        e);
+                        "Error with native formatting for blockquote, fallback to plain text", e);
                     quote.paragraph(getElementText(child));
                   }
                 } else {
@@ -1113,15 +1067,10 @@ public class HtmlToAdfConverter {
     return decodedText.trim().replaceAll("\\s+", " ");
   }
 
-  /**
-   * Détecte si un élément contient du formatage inline (strong, em, code, links avec href, etc.).
-   */
   private boolean hasInlineFormatting(Element element) {
-    // Vérifier récursivement si l'élément contient des tags de formatage
     boolean hasBasicFormatting =
         !element.select("strong, b, em, i, code, u, s, del, strike").isEmpty();
 
-    // Vérifier les liens, mais seulement ceux qui ont un href (vrais liens)
     boolean hasRealLinks = false;
     Elements links = element.select("a");
     for (Element link : links) {
@@ -1134,25 +1083,20 @@ public class HtmlToAdfConverter {
     return hasBasicFormatting || hasRealLinks;
   }
 
-  /** Traite un bloc de texte avec formatage inline natif ADF. */
   private Document processTextBlockWithNativeFormatting(Document doc, Element element) {
     try {
-      // Create list of Text nodes with formatting
       List<Text> textNodes = new ArrayList<>();
 
-      // Traiter récursivement tous les nœuds enfants
       for (org.jsoup.nodes.Node child : element.childNodes()) {
         textNodes.addAll(processNodeToTextNodes(child));
       }
 
-      // Convertir la liste en array pour paragraph()
       Text[] textArray = textNodes.toArray(new Text[0]);
 
       return doc.paragraph(textArray);
 
     } catch (Exception e) {
-      logger.warn("Erreur lors du formatage natif, fallback vers texte simple", e);
-      // Fallback vers la méthode existante
+      logger.warn("Error with native formatting, fallback to plain text", e);
       String textContent = cleanText(element.text());
       return doc.paragraph(textContent);
     }
