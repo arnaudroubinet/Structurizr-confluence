@@ -249,57 +249,17 @@ public class ExportCommand implements Runnable {
 
   private void loadConfigurationFromEnvironment() {
     // Load Confluence configuration from environment variables
-    if (confluenceUrl == null) {
-      confluenceUrl = System.getenv(ENV_CONFLUENCE_URL);
-      if (confluenceUrl != null) {
-        logger.info("Using {} environment variable", ENV_CONFLUENCE_URL);
-      }
-    }
-
-    if (confluenceUser == null) {
-      confluenceUser = System.getenv(ENV_CONFLUENCE_USER);
-      if (confluenceUser != null) {
-        logger.info("Using {} environment variable", ENV_CONFLUENCE_USER);
-      }
-    }
-
-    if (confluenceToken == null) {
-      confluenceToken = System.getenv(ENV_CONFLUENCE_TOKEN);
-      if (confluenceToken != null) {
-        logger.info("Using {} environment variable", ENV_CONFLUENCE_TOKEN);
-      }
-    }
-
-    if (confluenceSpaceKey == null) {
-      confluenceSpaceKey = System.getenv(ENV_CONFLUENCE_SPACE_KEY);
-      if (confluenceSpaceKey != null) {
-        logger.info("Using {} environment variable", ENV_CONFLUENCE_SPACE_KEY);
-      }
-    }
+    confluenceUrl = loadFromEnvIfNull(confluenceUrl, ENV_CONFLUENCE_URL);
+    confluenceUser = loadFromEnvIfNull(confluenceUser, ENV_CONFLUENCE_USER);
+    confluenceToken = loadFromEnvIfNull(confluenceToken, ENV_CONFLUENCE_TOKEN);
+    confluenceSpaceKey = loadFromEnvIfNull(confluenceSpaceKey, ENV_CONFLUENCE_SPACE_KEY);
 
     // Load Structurizr configuration from environment variables (only if no workspace file
     // provided)
     if (workspaceFile == null) {
-      if (structurizrUrl == null) {
-        structurizrUrl = System.getenv(ENV_STRUCTURIZR_URL);
-        if (structurizrUrl != null) {
-          logger.info("Using {} environment variable", ENV_STRUCTURIZR_URL);
-        }
-      }
-
-      if (structurizrApiKey == null) {
-        structurizrApiKey = System.getenv(ENV_STRUCTURIZR_API_KEY);
-        if (structurizrApiKey != null) {
-          logger.info("Using {} environment variable", ENV_STRUCTURIZR_API_KEY);
-        }
-      }
-
-      if (structurizrApiSecret == null) {
-        structurizrApiSecret = System.getenv(ENV_STRUCTURIZR_API_SECRET);
-        if (structurizrApiSecret != null) {
-          logger.info("Using {} environment variable", ENV_STRUCTURIZR_API_SECRET);
-        }
-      }
+      structurizrUrl = loadFromEnvIfNull(structurizrUrl, ENV_STRUCTURIZR_URL);
+      structurizrApiKey = loadFromEnvIfNull(structurizrApiKey, ENV_STRUCTURIZR_API_KEY);
+      structurizrApiSecret = loadFromEnvIfNull(structurizrApiSecret, ENV_STRUCTURIZR_API_SECRET);
 
       if (structurizrWorkspaceId == null) {
         String workspaceIdStr = System.getenv(ENV_STRUCTURIZR_WORKSPACE_ID);
@@ -316,6 +276,24 @@ public class ExportCommand implements Runnable {
         }
       }
     }
+  }
+
+  /**
+   * Loads a configuration value from environment variable if the current value is null.
+   *
+   * @param currentValue the current configuration value
+   * @param envVarName the environment variable name
+   * @return the environment variable value if current is null, otherwise the current value
+   */
+  private String loadFromEnvIfNull(String currentValue, String envVarName) {
+    if (currentValue == null) {
+      String envValue = System.getenv(envVarName);
+      if (envValue != null) {
+        logger.info("Using {} environment variable", envVarName);
+        return envValue;
+      }
+    }
+    return currentValue;
   }
 
   private boolean validateConfiguration() {
