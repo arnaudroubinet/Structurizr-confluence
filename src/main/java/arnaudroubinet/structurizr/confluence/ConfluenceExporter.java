@@ -35,6 +35,12 @@ public class ConfluenceExporter {
 
   private static final Logger logger = LoggerFactory.getLogger(ConfluenceExporter.class);
 
+  // Documentation format constants
+  private static final String FORMAT_ASCIIDOC = "AsciiDoc";
+  private static final String FORMAT_ASCIIDOC_LOWER = "asciidoc";
+  private static final String FORMAT_MARKDOWN = "Markdown";
+  private static final String FORMAT_MARKDOWN_SHORT = "md";
+
   private final ConfluenceClient confluenceClient;
   private final ObjectMapper objectMapper;
   private final StructurizrWorkspaceLoader workspaceLoader;
@@ -188,11 +194,11 @@ public class ConfluenceExporter {
 
         String htmlContent;
         String formatName = section.getFormat() != null ? section.getFormat().name() : "";
-        if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
+        if (isAsciiDocFormat(formatName)) {
           String workspaceId2 = getWorkspaceId(workspace);
           htmlContent =
               asciiDocConverter.convertToHtml(content, filenameFallback, workspaceId2, branchName);
-        } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
+        } else if (isMarkdownFormat(formatName)) {
           htmlContent = markdownConverter.toHtml(content);
         } else {
           htmlContent = content;
@@ -358,11 +364,11 @@ public class ConfluenceExporter {
 
         String htmlContent;
         String formatName = section.getFormat() != null ? section.getFormat().name() : "";
-        if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
+        if (isAsciiDocFormat(formatName)) {
           String workspaceId2 = getWorkspaceId(workspace);
           htmlContent =
               asciiDocConverter.convertToHtml(content, filenameFallback, workspaceId2, branchName);
-        } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
+        } else if (isMarkdownFormat(formatName)) {
           htmlContent = markdownConverter.toHtml(content);
         } else {
           htmlContent = content;
@@ -434,14 +440,14 @@ public class ConfluenceExporter {
       String htmlContent;
       String formatName = section.getFormat() != null ? section.getFormat().name() : "";
 
-      if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
+      if (isAsciiDocFormat(formatName)) {
         logger.debug("Converting AsciiDoc content for section (filename: {})", filenameFallback);
         String workspaceId = getWorkspaceId(workspace);
         // Passer le filename comme titre indicatif uniquement (log), pas de prise en compte
         // fonctionnelle
         htmlContent =
             asciiDocConverter.convertToHtml(content, filenameFallback, workspaceId, branchName);
-      } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
+      } else if (isMarkdownFormat(formatName)) {
         logger.debug(
             "Markdown content detected for section (filename: {}): converting to HTML for title extraction",
             filenameFallback);
@@ -865,13 +871,13 @@ public class ConfluenceExporter {
       String formatName = decision.getFormat() != null ? decision.getFormat().name() : "";
       String htmlContent;
 
-      if ("AsciiDoc".equalsIgnoreCase(formatName) || "asciidoc".equalsIgnoreCase(formatName)) {
+      if (isAsciiDocFormat(formatName)) {
         logger.debug("Converting AsciiDoc content for ADR: {}", decision.getTitle());
         String workspaceId = getWorkspaceId(workspace);
         htmlContent =
             asciiDocConverter.convertToHtml(
                 decision.getContent(), "ADR " + decision.getId(), workspaceId, branchName);
-      } else if ("Markdown".equalsIgnoreCase(formatName) || "md".equalsIgnoreCase(formatName)) {
+      } else if (isMarkdownFormat(formatName)) {
         logger.debug("Converting Markdown content for ADR: {}", decision.getTitle());
         htmlContent = markdownConverter.toHtml(decision.getContent());
       } else {
@@ -993,5 +999,27 @@ public class ConfluenceExporter {
       logger.warn("Failed to merge ADF documents, keeping base content only", e);
       return base;
     }
+  }
+
+  /**
+   * Checks if the format is AsciiDoc.
+   *
+   * @param formatName the format name to check
+   * @return true if format is AsciiDoc
+   */
+  private boolean isAsciiDocFormat(String formatName) {
+    return FORMAT_ASCIIDOC.equalsIgnoreCase(formatName)
+        || FORMAT_ASCIIDOC_LOWER.equalsIgnoreCase(formatName);
+  }
+
+  /**
+   * Checks if the format is Markdown.
+   *
+   * @param formatName the format name to check
+   * @return true if format is Markdown
+   */
+  private boolean isMarkdownFormat(String formatName) {
+    return FORMAT_MARKDOWN.equalsIgnoreCase(formatName)
+        || FORMAT_MARKDOWN_SHORT.equalsIgnoreCase(formatName);
   }
 }
