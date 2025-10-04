@@ -45,10 +45,10 @@ public class ConfluenceExporterIntegrationTest {
 
     // Clean the Confluence space before export
     ConfluenceExporter exporter = new ConfluenceExporter(config);
-    ConfluenceClient confluenceClient = new ConfluenceClient(config);
+    ConfluenceClient confluenceClient = exporter.getConfluenceClient();
 
     logger.info("Cleaning Confluence space: {}", confluenceSpaceKey);
-    exporter.cleanConfluenceSpace();
+    confluenceClient.cleanSpace();
     logger.info("Cleaning completed");
 
     File file = Path.of("demo/itms-workspace.json").toFile();

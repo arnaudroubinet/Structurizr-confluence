@@ -212,13 +212,10 @@ public class ExportCommand implements Runnable {
         }
 
         if (targetPageId != null) {
-          logger.info("Cleaning target page tree by ID: {}", targetPageId);
-          exporter.cleanPageTreeById(targetPageId);
+          exporter.getConfluenceClient().cleanPageTreeById(targetPageId);
         } else {
-          logger.info("Cleaning target page tree: {}", targetPageTitle);
-          exporter.cleanPageTree(targetPageTitle);
+          exporter.getConfluenceClient().cleanPageTree(targetPageTitle);
         }
-        logger.info("Page tree cleaning completed");
       }
 
       // Export workspace
