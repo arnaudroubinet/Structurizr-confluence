@@ -1,7 +1,13 @@
 package arnaudroubinet.structurizr.confluence.processor;
 
 import arnaudroubinet.structurizr.confluence.util.SslTrustUtils;
-import com.microsoft.playwright.*;
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.BrowserContext;
+import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Frame;
+import com.microsoft.playwright.Locator;
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Playwright;
 import com.structurizr.Workspace;
 import java.io.File;
 import java.io.IOException;
