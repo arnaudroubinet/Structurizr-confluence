@@ -6,6 +6,7 @@ import arnaudroubinet.structurizr.confluence.client.StructurizrConfig;
 import arnaudroubinet.structurizr.confluence.client.StructurizrWorkspaceLoader;
 import arnaudroubinet.structurizr.confluence.exporter.AdrExporter;
 import arnaudroubinet.structurizr.confluence.exporter.DocumentationSectionExporter;
+import arnaudroubinet.structurizr.confluence.exporter.ViewExporter;
 import arnaudroubinet.structurizr.confluence.generator.DocumentGenerator;
 import arnaudroubinet.structurizr.confluence.processor.AsciiDocConverter;
 import arnaudroubinet.structurizr.confluence.processor.DiagramExporter;
@@ -51,6 +52,7 @@ public class ConfluenceExporter {
   private final DocumentGenerator documentGenerator;
   private final AdrExporter adrExporter;
   private final DocumentationSectionExporter documentationSectionExporter;
+  private final ViewExporter viewExporter;
   private List<File> exportedDiagrams;
 
   /** Creates an exporter that loads workspaces from a Structurizr on-premise instance. */
@@ -73,6 +75,7 @@ public class ConfluenceExporter {
     this.documentationSectionExporter =
         new DocumentationSectionExporter(
             confluenceClient, htmlToAdfConverter, asciiDocConverter, markdownConverter);
+    this.viewExporter = new ViewExporter(confluenceClient, objectMapper, htmlToAdfConverter);
   }
 
   /** Creates an exporter for use with provided workspace objects (original behavior). */
@@ -94,6 +97,7 @@ public class ConfluenceExporter {
     this.documentationSectionExporter =
         new DocumentationSectionExporter(
             confluenceClient, htmlToAdfConverter, asciiDocConverter, markdownConverter);
+    this.viewExporter = new ViewExporter(confluenceClient, objectMapper, htmlToAdfConverter);
   }
 
   /**
@@ -161,6 +165,7 @@ public class ConfluenceExporter {
     }
 
     this.exportedDiagrams = exportedDiagrams;
+    viewExporter.setExportedDiagrams(exportedDiagrams);
 
     if (exportedDiagrams != null) {
       Function<String, File> diagramResolver = this::getDiagramFile;
@@ -256,7 +261,7 @@ public class ConfluenceExporter {
     // No longer create sub-pages for sections: content already inlined above
 
     // Générer une seule page avec toutes les vues (toutes les images de diagrammes)
-    exportAllViewsSinglePage(workspace, mainPageId);
+    viewExporter.exportAllViewsSinglePage(workspace, mainPageId);
 
     // Générer les ADRs
     adrExporter.exportDecisions(workspace, mainPageId, branchName);
@@ -329,6 +334,7 @@ public class ConfluenceExporter {
     }
 
     this.exportedDiagrams = exportedDiagrams;
+    viewExporter.setExportedDiagrams(exportedDiagrams);
 
     if (exportedDiagrams != null) {
       Function<String, File> diagramResolver = this::getDiagramFile;
@@ -422,7 +428,7 @@ public class ConfluenceExporter {
     logger.info("Documentation page content updated (ID: {})", documentationPageId);
 
     // Create Views page under branch page with branch suffix
-    exportAllViewsSinglePage(workspace, branchPageId, branchName);
+    viewExporter.exportAllViewsSinglePage(workspace, branchPageId, branchName);
 
     // Create ADRs under branch page with branch suffix
     adrExporter.exportDecisions(workspace, branchPageId, branchName);
@@ -455,270 +461,6 @@ public class ConfluenceExporter {
   }
 
   /**
-   * Creates a single "Views" page containing all exported view diagrams. Each view is rendered as a
-   * diagram image only, without titles or descriptions.
-   */
-  private void exportAllViewsSinglePage(Workspace workspace, String parentPageId) throws Exception {
-    ViewSet views = workspace.getViews();
-    logger.info(
-        "[ViewsExport] Single page export (no branch) - counts => SystemLandscape: {} | SystemContext: {} | Container: {} | Component: {} | Deployment: {}",
-        views.getSystemLandscapeViews().size(),
-        views.getSystemContextViews().size(),
-        views.getContainerViews().size(),
-        views.getComponentViews().size(),
-        views.getDeploymentViews().size());
-
-    String viewsPageId =
-        confluenceClient.createOrUpdatePage(
-            "Views", "{\"version\":1,\"type\":\"doc\",\"content\":[]}", parentPageId);
-
-    ImageUploadManager imageUploadManager = new ImageUploadManager(confluenceClient);
-    htmlToAdfConverter.setImageUploadManager(imageUploadManager);
-    htmlToAdfConverter.setCurrentPageId(viewsPageId);
-
-    Document viewsDoc = Document.create();
-    String viewsJson = convertDocumentToJson(viewsDoc);
-    ObjectNode viewsNode =
-        objectMapper.readTree(viewsJson) instanceof ObjectNode
-            ? (ObjectNode) objectMapper.readTree(viewsJson)
-            : objectMapper.createObjectNode();
-    ArrayNode viewsContent =
-        viewsNode.has("content") && viewsNode.get("content").isArray()
-            ? (ArrayNode) viewsNode.get("content")
-            : viewsNode.putArray("content");
-
-    addExportedDiagramsToContent(viewsContent);
-
-    int nodeCount = viewsContent.size();
-    logger.info("[ViewsExport] Generated ADF nodes (no branch): {}", nodeCount);
-    if (nodeCount == 0) {
-      logger.warn(
-          "[ViewsExport] No content nodes added to 'Views' page (no branch version). Page will appear empty.");
-    }
-
-    String finalViewsJson = objectMapper.writeValueAsString(viewsNode);
-    logger.info(
-        "[ViewsExport] Views page JSON length (no branch): {} chars", finalViewsJson.length());
-    if (logger.isDebugEnabled()) {
-      logger.debug("[ViewsExport] Views page JSON (no branch): {}", finalViewsJson);
-    }
-    confluenceClient.updatePageById(viewsPageId, "Views", finalViewsJson);
-    logger.info("Created/updated single Views page with all diagrams (pageId: {})", viewsPageId);
-  }
-
-  /**
-   * Creates a single "Views" page containing all exported view diagrams. Version with branch name
-   * support.
-   *
-   * @param workspace the workspace
-   * @param parentPageId the parent page ID
-   * @param branchName branch name to add as suffix to page title
-   */
-  private void exportAllViewsSinglePage(Workspace workspace, String parentPageId, String branchName)
-      throws Exception {
-    ViewSet views = workspace.getViews();
-    logger.info(
-        "[ViewsExport] Branch export '{}' - counts => SystemLandscape: {} | SystemContext: {} | Container: {} | Component: {} | Deployment: {}",
-        branchName,
-        views.getSystemLandscapeViews().size(),
-        views.getSystemContextViews().size(),
-        views.getContainerViews().size(),
-        views.getComponentViews().size(),
-        views.getDeploymentViews().size());
-
-    String viewsPageTitle = "Views - " + branchName;
-    String viewsPageId =
-        confluenceClient.createOrUpdatePage(
-            viewsPageTitle, "{\"version\":1,\"type\":\"doc\",\"content\":[]}", parentPageId);
-
-    ImageUploadManager imageUploadManager = new ImageUploadManager(confluenceClient);
-    htmlToAdfConverter.setImageUploadManager(imageUploadManager);
-    htmlToAdfConverter.setCurrentPageId(viewsPageId);
-
-    Document viewsDoc = Document.create();
-    String viewsJson = convertDocumentToJson(viewsDoc);
-    ObjectNode viewsNode =
-        objectMapper.readTree(viewsJson) instanceof ObjectNode
-            ? (ObjectNode) objectMapper.readTree(viewsJson)
-            : objectMapper.createObjectNode();
-    ArrayNode viewsContent =
-        viewsNode.has("content") && viewsNode.get("content").isArray()
-            ? (ArrayNode) viewsNode.get("content")
-            : viewsNode.putArray("content");
-
-    addExportedDiagramsToContent(viewsContent);
-
-    int nodeCount = viewsContent.size();
-    logger.info("[ViewsExport] Generated ADF nodes (branch '{}'): {}", branchName, nodeCount);
-    if (nodeCount == 0) {
-      logger.warn(
-          "[ViewsExport] No content nodes added to 'Views - {}' page. Page will appear empty.",
-          branchName);
-    }
-
-    String finalViewsJson = objectMapper.writeValueAsString(viewsNode);
-    logger.info(
-        "[ViewsExport] Views page JSON length (branch '{}'): {} chars",
-        branchName,
-        finalViewsJson.length());
-    if (logger.isDebugEnabled()) {
-      logger.debug("[ViewsExport] Views page JSON (branch '{}'): {}", branchName, finalViewsJson);
-    }
-    confluenceClient.updatePageById(viewsPageId, viewsPageTitle, finalViewsJson);
-    logger.info("Created/updated Views page with branch suffix (pageId: {})", viewsPageId);
-  }
-
-  /**
-   * Adds all exported diagram images from the /diagrams page to the document. Iterates through
-   * exported diagram files instead of workspace views to ensure all diagrams present on the
-   * /diagrams page are included.
-   *
-   * @param doc the ADF document to add diagrams to
-   * @return the updated document
-   */
-  /**
-   * Adds all exported diagram images from the /diagrams page to the content array. Iterates through
-   * exported diagram files instead of workspace views to ensure all diagrams present on the
-   * /diagrams page are included. Uses JSON approach (like documentation) to avoid Document
-   * serialization issues.
-   *
-   * @param content the ArrayNode to add diagram content to
-   */
-  private void addExportedDiagramsToContent(ArrayNode content) {
-    if (exportedDiagrams == null) {
-      logger.error(
-          "[ViewsExport] exportedDiagrams is null - diagram export may have failed; page will be empty");
-      return;
-    }
-    if (exportedDiagrams.isEmpty()) {
-      logger.error(
-          "[ViewsExport] exportedDiagrams is empty - no diagrams exported; page will be empty");
-      return;
-    }
-
-    logger.info("[ViewsExport] Building combined HTML for {} diagrams", exportedDiagrams.size());
-    StringBuilder html = new StringBuilder();
-    int skippedKeys = 0;
-    int included = 0;
-    java.util.List<String> includedViewKeys = new java.util.ArrayList<>();
-
-    for (File diagramFile : exportedDiagrams) {
-      String filename = diagramFile.getName();
-      if (filename.endsWith("-key.png")) { // skip legend/key images
-        skippedKeys++;
-        continue;
-      }
-      String viewKey = extractViewKeyFromFilename(filename);
-      if (viewKey == null) {
-        logger.warn(
-            "[ViewsExport] Cannot extract view key from filename '{}' -> skipping", filename);
-        continue;
-      }
-      html.append("<p><img src=\"local:diagram:")
-          .append(viewKey)
-          .append("\" alt=\"")
-          .append(viewKey)
-          .append("\"></p>");
-      included++;
-      includedViewKeys.add(viewKey);
-    }
-
-    logger.info(
-        "[ViewsExport] Included {} diagram(s), skipped {} '-key' files", included, skippedKeys);
-    if (included == 0) {
-      logger.warn("[ViewsExport] No base diagram images included in combined HTML -> aborting");
-      return;
-    }
-
-    // Single conversion attempt
-    String combinedHtml = html.toString();
-    logger.debug("[ViewsExport] Combined HTML length: {} chars", combinedHtml.length());
-    try {
-      String combinedAdfJson =
-          htmlToAdfConverter.convertToAdfJson(combinedHtml, "All Views Diagrams");
-      logger.debug("[ViewsExport] Combined ADF JSON length: {} chars", combinedAdfJson.length());
-      ObjectNode combinedNode =
-          objectMapper.readTree(combinedAdfJson) instanceof ObjectNode
-              ? (ObjectNode) objectMapper.readTree(combinedAdfJson)
-              : objectMapper.createObjectNode();
-      JsonNode combinedContent = combinedNode.get("content");
-      int before = content.size();
-      if (combinedContent != null && combinedContent.isArray()) {
-        for (JsonNode child : combinedContent) {
-          content.add(child);
-        }
-      }
-      int added = content.size() - before;
-      logger.info(
-          "[ViewsExport] Added {} ADF node(s) to Views page from combined conversion (expected >= {})",
-          added,
-          included);
-      if (added == 0) {
-        logger.warn(
-            "[ViewsExport] Combined conversion produced 0 nodes; activating fallback placeholder strategy");
-        addFallbackDiagramPlaceholders(content, includedViewKeys);
-      }
-    } catch (Exception e) {
-      logger.error(
-          "[ViewsExport] Combined conversion failed: {} - activating fallback placeholders",
-          e.getMessage(),
-          e);
-      addFallbackDiagramPlaceholders(content, includedViewKeys);
-    }
-  }
-
-  /** Fallback: insère des paragraphes placeholder si la conversion ADF ne retourne rien. */
-  private void addFallbackDiagramPlaceholders(ArrayNode content, java.util.List<String> viewKeys) {
-    for (String vk : viewKeys) {
-      ObjectNode paragraph = objectMapper.createObjectNode();
-      paragraph.put("type", "paragraph");
-      ArrayNode pContent = paragraph.putArray("content");
-      ObjectNode text = objectMapper.createObjectNode();
-      text.put("type", "text");
-      text.put("text", "[diagram: " + vk + "] (placeholder - conversion failed)");
-      pContent.add(text);
-      content.add(paragraph);
-    }
-    logger.info("[ViewsExport] Inserted {} placeholder paragraph(s) for diagrams", viewKeys.size());
-  }
-
-  /**
-   * Extracts the view key from a diagram filename. Expected format:
-   * structurizr-{workspaceId}-{viewKey}.png or structurizr-{workspaceId}-{viewKey}-key.png
-   *
-   * @param filename the diagram filename
-   * @return the view key, or null if it cannot be extracted
-   */
-  private String extractViewKeyFromFilename(String filename) {
-    if (filename == null || !filename.contains("-") || !filename.contains(".")) {
-      return null;
-    }
-
-    // Remove extension
-    String nameWithoutExt = filename.substring(0, filename.lastIndexOf('.'));
-
-    // Remove "-key" suffix if present
-    if (nameWithoutExt.endsWith("-key")) {
-      nameWithoutExt = nameWithoutExt.substring(0, nameWithoutExt.length() - 4);
-    }
-
-    // Expected format: structurizr-{workspaceId}-{viewKey}
-    // Find the second dash (after workspaceId)
-    int firstDash = nameWithoutExt.indexOf('-');
-    if (firstDash < 0) {
-      return null;
-    }
-
-    int secondDash = nameWithoutExt.indexOf('-', firstDash + 1);
-    if (secondDash < 0) {
-      return null;
-    }
-
-    // Everything after the second dash is the view key
-    return nameWithoutExt.substring(secondDash + 1);
-  }
-
-  /**
    * Gets the exported diagram file for a given view key.
    *
    * @param viewKey the view key to look for
@@ -740,8 +482,8 @@ public class ConfluenceExporter {
       logger.debug("Checking diagram file: {}", filename);
 
       // Expected format: structurizr-{workspaceId}-{viewKey}.png
-      // Extract the view key using the same logic as extractViewKeyFromFilename
-      String extractedViewKey = extractViewKeyFromFilename(filename);
+      // Extract the view key inline
+      String extractedViewKey = extractViewKeyFromFile(filename);
       if (extractedViewKey != null && extractedViewKey.equals(viewKey)) {
         logger.info("Found exact matching diagram file: {} for view key: {}", filename, viewKey);
         return diagramFile;
@@ -765,6 +507,39 @@ public class ConfluenceExporter {
         "Available diagram files: {}", exportedDiagrams.stream().map(File::getName).toArray());
 
     return null;
+  }
+
+  /**
+   * Extracts the view key from a diagram filename for use in getDiagramFile.
+   *
+   * @param filename the diagram filename
+   * @return the view key, or null if it cannot be extracted
+   */
+  private String extractViewKeyFromFile(String filename) {
+    if (filename == null || !filename.contains("-") || !filename.contains(".")) {
+      return null;
+    }
+
+    // Remove extension
+    String nameWithoutExt = filename.substring(0, filename.lastIndexOf('.'));
+
+    // Remove "-key" suffix if present
+    if (nameWithoutExt.endsWith("-key")) {
+      nameWithoutExt = nameWithoutExt.substring(0, nameWithoutExt.length() - 4);
+    }
+
+    // Expected format: structurizr-{workspaceId}-{viewKey}
+    int firstDash = nameWithoutExt.indexOf('-');
+    if (firstDash < 0) {
+      return null;
+    }
+
+    int secondDash = nameWithoutExt.indexOf('-', firstDash + 1);
+    if (secondDash < 0) {
+      return null;
+    }
+
+    return nameWithoutExt.substring(secondDash + 1);
   }
 
   /**
