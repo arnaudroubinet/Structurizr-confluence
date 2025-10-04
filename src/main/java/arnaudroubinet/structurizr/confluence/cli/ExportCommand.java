@@ -23,6 +23,16 @@ import picocli.CommandLine;
 public class ExportCommand implements Runnable {
   private static final Logger logger = LoggerFactory.getLogger(ExportCommand.class);
 
+  // Environment variable names
+  private static final String ENV_CONFLUENCE_URL = "CONFLUENCE_URL";
+  private static final String ENV_CONFLUENCE_USER = "CONFLUENCE_USER";
+  private static final String ENV_CONFLUENCE_TOKEN = "CONFLUENCE_TOKEN";
+  private static final String ENV_CONFLUENCE_SPACE_KEY = "CONFLUENCE_SPACE_KEY";
+  private static final String ENV_STRUCTURIZR_URL = "STRUCTURIZR_URL";
+  private static final String ENV_STRUCTURIZR_API_KEY = "STRUCTURIZR_API_KEY";
+  private static final String ENV_STRUCTURIZR_API_SECRET = "STRUCTURIZR_API_SECRET";
+  private static final String ENV_STRUCTURIZR_WORKSPACE_ID = "STRUCTURIZR_WORKSPACE_ID";
+
   // Confluence options
   @CommandLine.Option(
       names = {"-u", "--confluence-url"},
@@ -240,30 +250,30 @@ public class ExportCommand implements Runnable {
   private void loadConfigurationFromEnvironment() {
     // Load Confluence configuration from environment variables
     if (confluenceUrl == null) {
-      confluenceUrl = System.getenv("CONFLUENCE_URL");
+      confluenceUrl = System.getenv(ENV_CONFLUENCE_URL);
       if (confluenceUrl != null) {
-        logger.info("Using CONFLUENCE_URL environment variable");
+        logger.info("Using {} environment variable", ENV_CONFLUENCE_URL);
       }
     }
 
     if (confluenceUser == null) {
-      confluenceUser = System.getenv("CONFLUENCE_USER");
+      confluenceUser = System.getenv(ENV_CONFLUENCE_USER);
       if (confluenceUser != null) {
-        logger.info("Using CONFLUENCE_USER environment variable");
+        logger.info("Using {} environment variable", ENV_CONFLUENCE_USER);
       }
     }
 
     if (confluenceToken == null) {
-      confluenceToken = System.getenv("CONFLUENCE_TOKEN");
+      confluenceToken = System.getenv(ENV_CONFLUENCE_TOKEN);
       if (confluenceToken != null) {
-        logger.info("Using CONFLUENCE_TOKEN environment variable");
+        logger.info("Using {} environment variable", ENV_CONFLUENCE_TOKEN);
       }
     }
 
     if (confluenceSpaceKey == null) {
-      confluenceSpaceKey = System.getenv("CONFLUENCE_SPACE_KEY");
+      confluenceSpaceKey = System.getenv(ENV_CONFLUENCE_SPACE_KEY);
       if (confluenceSpaceKey != null) {
-        logger.info("Using CONFLUENCE_SPACE_KEY environment variable");
+        logger.info("Using {} environment variable", ENV_CONFLUENCE_SPACE_KEY);
       }
     }
 
@@ -271,35 +281,37 @@ public class ExportCommand implements Runnable {
     // provided)
     if (workspaceFile == null) {
       if (structurizrUrl == null) {
-        structurizrUrl = System.getenv("STRUCTURIZR_URL");
+        structurizrUrl = System.getenv(ENV_STRUCTURIZR_URL);
         if (structurizrUrl != null) {
-          logger.info("Using STRUCTURIZR_URL environment variable");
+          logger.info("Using {} environment variable", ENV_STRUCTURIZR_URL);
         }
       }
 
       if (structurizrApiKey == null) {
-        structurizrApiKey = System.getenv("STRUCTURIZR_API_KEY");
+        structurizrApiKey = System.getenv(ENV_STRUCTURIZR_API_KEY);
         if (structurizrApiKey != null) {
-          logger.info("Using STRUCTURIZR_API_KEY environment variable");
+          logger.info("Using {} environment variable", ENV_STRUCTURIZR_API_KEY);
         }
       }
 
       if (structurizrApiSecret == null) {
-        structurizrApiSecret = System.getenv("STRUCTURIZR_API_SECRET");
+        structurizrApiSecret = System.getenv(ENV_STRUCTURIZR_API_SECRET);
         if (structurizrApiSecret != null) {
-          logger.info("Using STRUCTURIZR_API_SECRET environment variable");
+          logger.info("Using {} environment variable", ENV_STRUCTURIZR_API_SECRET);
         }
       }
 
       if (structurizrWorkspaceId == null) {
-        String workspaceIdStr = System.getenv("STRUCTURIZR_WORKSPACE_ID");
+        String workspaceIdStr = System.getenv(ENV_STRUCTURIZR_WORKSPACE_ID);
         if (workspaceIdStr != null) {
           try {
             structurizrWorkspaceId = Long.parseLong(workspaceIdStr);
-            logger.info("Using STRUCTURIZR_WORKSPACE_ID environment variable");
+            logger.info("Using {} environment variable", ENV_STRUCTURIZR_WORKSPACE_ID);
           } catch (NumberFormatException e) {
             logger.warn(
-                "Invalid STRUCTURIZR_WORKSPACE_ID environment variable: {}", workspaceIdStr);
+                "Invalid {} environment variable: {}",
+                ENV_STRUCTURIZR_WORKSPACE_ID,
+                workspaceIdStr);
           }
         }
       }
@@ -310,19 +322,25 @@ public class ExportCommand implements Runnable {
     // Validate Confluence configuration
     if (confluenceUrl == null || confluenceUrl.trim().isEmpty()) {
       System.err.println(
-          "❌ Error: --confluence-url is required (or set CONFLUENCE_URL environment variable)");
+          "❌ Error: --confluence-url is required (or set "
+              + ENV_CONFLUENCE_URL
+              + " environment variable)");
       return false;
     }
 
     if (confluenceUser == null || confluenceUser.trim().isEmpty()) {
       System.err.println(
-          "❌ Error: --confluence-user is required (or set CONFLUENCE_USER environment variable)");
+          "❌ Error: --confluence-user is required (or set "
+              + ENV_CONFLUENCE_USER
+              + " environment variable)");
       return false;
     }
 
     if (confluenceToken == null || confluenceToken.trim().isEmpty()) {
       System.err.println(
-          "❌ Error: --confluence-token is required (or set CONFLUENCE_TOKEN environment variable)");
+          "❌ Error: --confluence-token is required (or set "
+              + ENV_CONFLUENCE_TOKEN
+              + " environment variable)");
       return false;
     }
 
@@ -331,25 +349,33 @@ public class ExportCommand implements Runnable {
       // Using Structurizr on-premise, validate those parameters
       if (structurizrUrl == null || structurizrUrl.trim().isEmpty()) {
         System.err.println(
-            "❌ Error: --structurizr-url is required when not using --workspace-file (or set STRUCTURIZR_URL environment variable)");
+            "❌ Error: --structurizr-url is required when not using --workspace-file (or set "
+                + ENV_STRUCTURIZR_URL
+                + " environment variable)");
         return false;
       }
 
       if (structurizrApiKey == null || structurizrApiKey.trim().isEmpty()) {
         System.err.println(
-            "❌ Error: --structurizr-key is required when not using --workspace-file (or set STRUCTURIZR_API_KEY environment variable)");
+            "❌ Error: --structurizr-key is required when not using --workspace-file (or set "
+                + ENV_STRUCTURIZR_API_KEY
+                + " environment variable)");
         return false;
       }
 
       if (structurizrApiSecret == null || structurizrApiSecret.trim().isEmpty()) {
         System.err.println(
-            "❌ Error: --structurizr-secret is required when not using --workspace-file (or set STRUCTURIZR_API_SECRET environment variable)");
+            "❌ Error: --structurizr-secret is required when not using --workspace-file (or set "
+                + ENV_STRUCTURIZR_API_SECRET
+                + " environment variable)");
         return false;
       }
 
       if (structurizrWorkspaceId == null) {
         System.err.println(
-            "❌ Error: --structurizr-workspace-id is required when not using --workspace-file (or set STRUCTURIZR_WORKSPACE_ID environment variable)");
+            "❌ Error: --structurizr-workspace-id is required when not using --workspace-file (or set "
+                + ENV_STRUCTURIZR_WORKSPACE_ID
+                + " environment variable)");
         return false;
       }
     }
@@ -358,7 +384,9 @@ public class ExportCommand implements Runnable {
     // space
     if (confluenceSpaceKey == null && pageId == null) {
       System.err.println(
-          "❌ Error: --confluence-space is required (or set CONFLUENCE_SPACE_KEY environment variable)");
+          "❌ Error: --confluence-space is required (or set "
+              + ENV_CONFLUENCE_SPACE_KEY
+              + " environment variable)");
       return false;
     }
 
