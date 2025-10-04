@@ -25,6 +25,22 @@ public class HtmlToAdfConverter {
   private static final Logger logger = LoggerFactory.getLogger(HtmlToAdfConverter.class);
   private static final ObjectMapper objectMapper = new ObjectMapper();
 
+  // URL protocol constants
+  private static final String HTTP_PROTOCOL = "http://";
+  private static final String HTTPS_PROTOCOL = "https://";
+
+  // ADF node type constants
+  private static final String ADF_TYPE = "type";
+  private static final String ADF_TEXT = "text";
+  private static final String ADF_CONTENT = "content";
+
+  // ADF mark type constants
+  private static final String MARK_STRONG = "strong";
+  private static final String MARK_EM = "em";
+  private static final String MARK_CODE = "code";
+  private static final String MARK_STRIKE = "strike";
+  private static final String MARK_UNDERLINE = "underline";
+
   private ImageUploadManager imageUploadManager;
   private String currentPageId;
   private Function<String, File> diagramResolver;
@@ -295,16 +311,16 @@ public class HtmlToAdfConverter {
         return processInlineElementAsFormattedParagraph(doc, element, null);
       case "strong":
       case "b":
-        return processInlineElementAsFormattedParagraph(doc, element, "strong");
+        return processInlineElementAsFormattedParagraph(doc, element, MARK_STRONG);
       case "em":
       case "i":
-        return processInlineElementAsFormattedParagraph(doc, element, "em");
+        return processInlineElementAsFormattedParagraph(doc, element, MARK_EM);
       case "u":
-        return processInlineElementAsFormattedParagraph(doc, element, "underline");
+        return processInlineElementAsFormattedParagraph(doc, element, MARK_UNDERLINE);
       case "s":
-        return processInlineElementAsFormattedParagraph(doc, element, "strike");
+        return processInlineElementAsFormattedParagraph(doc, element, MARK_STRIKE);
       case "code":
-        return processInlineElementAsFormattedParagraph(doc, element, "code");
+        return processInlineElementAsFormattedParagraph(doc, element, MARK_CODE);
 
       // Skip structure elements
       case "thead":
@@ -380,8 +396,8 @@ public class HtmlToAdfConverter {
 
   private boolean containsLinks(String markdownContent) {
     return markdownContent.contains("[") && markdownContent.contains("](")
-        || markdownContent.contains("http://")
-        || markdownContent.contains("https://");
+        || markdownContent.contains(HTTP_PROTOCOL)
+        || markdownContent.contains(HTTPS_PROTOCOL);
   }
 
   private Document addMarkdownContentToDocument(Document doc, String markdownContent) {
@@ -423,19 +439,19 @@ public class HtmlToAdfConverter {
             // Lien sans href - garder juste le texte
             markdown.append(linkText);
           }
-        } else if ("strong".equals(tagName) || "b".equals(tagName)) {
+        } else if (MARK_STRONG.equals(tagName) || "b".equals(tagName)) {
           // Texte en gras
           String text = childElement.text();
           if (!text.isEmpty()) {
             markdown.append("**").append(text).append("**");
           }
-        } else if ("em".equals(tagName) || "i".equals(tagName)) {
+        } else if (MARK_EM.equals(tagName) || "i".equals(tagName)) {
           // Texte en italique
           String text = childElement.text();
           if (!text.isEmpty()) {
             markdown.append("*").append(text).append("*");
           }
-        } else if ("code".equals(tagName)) {
+        } else if (MARK_CODE.equals(tagName)) {
           // Code inline
           String text = childElement.text();
           if (!text.isEmpty()) {
@@ -568,13 +584,13 @@ public class HtmlToAdfConverter {
           String cellText = getElementText(cell).trim();
           if (!cellText.isEmpty()) {
             ObjectNode paragraph = objectMapper.createObjectNode();
-            paragraph.put("type", "paragraph");
+            paragraph.put(ADF_TYPE, "paragraph");
             ArrayNode paragraphContent = objectMapper.createArrayNode();
             ObjectNode textNode = objectMapper.createObjectNode();
-            textNode.put("type", "text");
-            textNode.put("text", cellText);
+            textNode.put(ADF_TYPE, ADF_TEXT);
+            textNode.put(ADF_TEXT, cellText);
             paragraphContent.add(textNode);
-            paragraph.set("content", paragraphContent);
+            paragraph.set(ADF_CONTENT, paragraphContent);
             cellContent.add(paragraph);
           }
 
@@ -1414,7 +1430,7 @@ public class HtmlToAdfConverter {
 
   /** Checks if a URL is external (http/https) or local/relative. */
   private boolean isExternalUrl(String url) {
-    return url.startsWith("http://") || url.startsWith("https://");
+    return url.startsWith(HTTP_PROTOCOL) || url.startsWith(HTTPS_PROTOCOL);
   }
 
   /**

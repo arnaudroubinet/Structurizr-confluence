@@ -13,6 +13,11 @@ import org.slf4j.LoggerFactory;
 public class ImageUploadManager {
   private static final Logger logger = LoggerFactory.getLogger(ImageUploadManager.class);
 
+  // Image file constants
+  private static final String IMAGE_PREFIX = "image_";
+  private static final String DEFAULT_EXTENSION = ".png";
+  private static final String DEFAULT_MIME_TYPE = "image/png";
+
   private final ConfluenceClient confluenceClient;
   private final Map<String, MediaUploadResult> uploadedImages = new HashMap<>(); // key -> result
 
@@ -112,7 +117,7 @@ public class ImageUploadManager {
       if (filename.isEmpty() || !filename.contains(".")) {
         // Generate filename based on URL hash and default extension
         String hash = Integer.toHexString(imageUrl.hashCode());
-        filename = "image_" + hash + ".png";
+        filename = IMAGE_PREFIX + hash + DEFAULT_EXTENSION;
       }
 
       // Sanitize filename - remove special characters
@@ -123,7 +128,7 @@ public class ImageUploadManager {
     } catch (Exception e) {
       // Fallback to hash-based filename
       String hash = Integer.toHexString(imageUrl.hashCode());
-      return "image_" + hash + ".png";
+      return IMAGE_PREFIX + hash + DEFAULT_EXTENSION;
     }
   }
 
@@ -131,8 +136,8 @@ public class ImageUploadManager {
   String getMimeTypeFromFilename(String filename) {
     String lowerFilename = filename.toLowerCase();
 
-    if (lowerFilename.endsWith(".png")) {
-      return "image/png";
+    if (lowerFilename.endsWith(DEFAULT_EXTENSION)) {
+      return DEFAULT_MIME_TYPE;
     } else if (lowerFilename.endsWith(".jpg") || lowerFilename.endsWith(".jpeg")) {
       return "image/jpeg";
     } else if (lowerFilename.endsWith(".gif")) {

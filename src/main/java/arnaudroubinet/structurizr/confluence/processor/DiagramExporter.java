@@ -20,6 +20,12 @@ import org.slf4j.LoggerFactory;
 public class DiagramExporter {
   private static final Logger logger = LoggerFactory.getLogger(DiagramExporter.class);
 
+  // Environment variable names
+  private static final String ENV_STRUCTURIZR_URL = "STRUCTURIZR_URL";
+  private static final String ENV_STRUCTURIZR_USERNAME = "STRUCTURIZR_USERNAME";
+  private static final String ENV_STRUCTURIZR_PASSWORD = "STRUCTURIZR_PASSWORD";
+
+  // Configuration defaults
   private static final int DEFAULT_MAX_DURATION_SECONDS = 300;
   private static final int DEFAULT_VIEWPORT_WIDTH = 1920;
   private static final int DEFAULT_VIEWPORT_HEIGHT = 1080;
@@ -64,13 +70,16 @@ public class DiagramExporter {
    * @return configured DiagramExporter or null if environment variables are missing
    */
   public static DiagramExporter fromEnvironment(String workspaceId) {
-    String url = System.getenv("STRUCTURIZR_URL");
-    String user = System.getenv("STRUCTURIZR_USERNAME");
-    String password = System.getenv("STRUCTURIZR_PASSWORD");
+    String url = System.getenv(ENV_STRUCTURIZR_URL);
+    String user = System.getenv(ENV_STRUCTURIZR_USERNAME);
+    String password = System.getenv(ENV_STRUCTURIZR_PASSWORD);
 
     if (url == null || user == null || password == null) {
       logger.warn(
-          "STRUCTURIZR_URL, STRUCTURIZR_USERNAME or STRUCTURIZR_PASSWORD not defined. Diagram export unavailable.");
+          "{}, {} or {} not defined. Diagram export unavailable.",
+          ENV_STRUCTURIZR_URL,
+          ENV_STRUCTURIZR_USERNAME,
+          ENV_STRUCTURIZR_PASSWORD);
       return null;
     }
 

@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 public class SslTrustUtils {
 
   private static final Logger logger = LoggerFactory.getLogger(SslTrustUtils.class);
+  private static final String ENV_DISABLE_SSL_VERIFICATION = "DISABLE_SSL_VERIFICATION";
+  private static final String PROPERTY_DISABLE_SSL_VERIFICATION = "disable.ssl.verification";
 
   /**
    * Creates an HttpClient that trusts all certificates (including self-signed ones). WARNING: This
@@ -100,24 +102,26 @@ public class SslTrustUtils {
   /**
    * Checks if SSL certificate validation should be disabled based on environment variables or
    * system properties. Checks for DISABLE_SSL_VERIFICATION environment variable or
-   * javax.net.ssl.trustStore system property.
+   * disable.ssl.verification system property.
    *
    * @return true if SSL verification should be disabled
    */
   public static boolean shouldDisableSslVerification() {
     // Check environment variable first
-    String disableEnv = System.getenv("DISABLE_SSL_VERIFICATION");
+    String disableEnv = System.getenv(ENV_DISABLE_SSL_VERIFICATION);
     if ("true".equalsIgnoreCase(disableEnv)) {
       logger.warn(
-          "SSL certificate verification disabled via DISABLE_SSL_VERIFICATION environment variable");
+          "SSL certificate verification disabled via {} environment variable",
+          ENV_DISABLE_SSL_VERIFICATION);
       return true;
     }
 
     // Check system property
-    String disableProp = System.getProperty("disable.ssl.verification");
+    String disableProp = System.getProperty(PROPERTY_DISABLE_SSL_VERIFICATION);
     if ("true".equalsIgnoreCase(disableProp)) {
       logger.warn(
-          "SSL certificate verification disabled via disable.ssl.verification system property");
+          "SSL certificate verification disabled via {} system property",
+          PROPERTY_DISABLE_SSL_VERIFICATION);
       return true;
     }
 

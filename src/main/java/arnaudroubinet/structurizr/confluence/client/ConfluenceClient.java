@@ -21,6 +21,8 @@ import org.slf4j.LoggerFactory;
 public class ConfluenceClient {
 
   private static final Logger logger = LoggerFactory.getLogger(ConfluenceClient.class);
+  private static final int DEFAULT_PAGE_LIMIT = 250;
+  private static final int LOG_RESPONSE_MAX_LENGTH = 500;
 
   private final ConfluenceConfig config;
   private final ObjectMapper objectMapper;
@@ -264,10 +266,10 @@ public class ConfluenceClient {
 
       // Utiliser l'endpoint API v2 avec l'ID de l'espace
       logger.info("Listing pages in space: {} (ID: {})", config.getSpaceKey(), spaceId);
-      String responseBody = api.listPages(spaceId, 250).await().indefinitely();
+      String responseBody = api.listPages(spaceId, DEFAULT_PAGE_LIMIT).await().indefinitely();
       logger.info(
           "Response from listing pages: {}",
-          responseBody.substring(0, Math.min(500, responseBody.length())));
+          responseBody.substring(0, Math.min(LOG_RESPONSE_MAX_LENGTH, responseBody.length())));
       JsonNode jsonResponse = objectMapper.readTree(responseBody);
       JsonNode results = jsonResponse.get("results");
 
@@ -344,7 +346,7 @@ public class ConfluenceClient {
   public List<String> getSpacePageIds(String spaceKey) throws IOException {
     try {
       String spaceId = getSpaceId();
-      String responseBody = api.listPages(spaceId, 250).await().indefinitely();
+      String responseBody = api.listPages(spaceId, DEFAULT_PAGE_LIMIT).await().indefinitely();
       JsonNode jsonResponse = objectMapper.readTree(responseBody);
       JsonNode results = jsonResponse.get("results");
 

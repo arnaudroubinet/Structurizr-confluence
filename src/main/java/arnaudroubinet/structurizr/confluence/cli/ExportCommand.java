@@ -23,6 +23,16 @@ import picocli.CommandLine;
 public class ExportCommand implements Runnable {
   private static final Logger logger = LoggerFactory.getLogger(ExportCommand.class);
 
+  // Environment variable names
+  private static final String ENV_CONFLUENCE_URL = "CONFLUENCE_URL";
+  private static final String ENV_CONFLUENCE_USER = "CONFLUENCE_USER";
+  private static final String ENV_CONFLUENCE_TOKEN = "CONFLUENCE_TOKEN";
+  private static final String ENV_CONFLUENCE_SPACE_KEY = "CONFLUENCE_SPACE_KEY";
+  private static final String ENV_STRUCTURIZR_URL = "STRUCTURIZR_URL";
+  private static final String ENV_STRUCTURIZR_API_KEY = "STRUCTURIZR_API_KEY";
+  private static final String ENV_STRUCTURIZR_API_SECRET = "STRUCTURIZR_API_SECRET";
+  private static final String ENV_STRUCTURIZR_WORKSPACE_ID = "STRUCTURIZR_WORKSPACE_ID";
+
   // Confluence options
   @CommandLine.Option(
       names = {"-u", "--confluence-url"},
@@ -239,117 +249,95 @@ public class ExportCommand implements Runnable {
 
   private void loadConfigurationFromEnvironment() {
     // Load Confluence configuration from environment variables
-    if (confluenceUrl == null) {
-      confluenceUrl = System.getenv("CONFLUENCE_URL");
-      if (confluenceUrl != null) {
-        logger.info("Using CONFLUENCE_URL environment variable");
-      }
-    }
-
-    if (confluenceUser == null) {
-      confluenceUser = System.getenv("CONFLUENCE_USER");
-      if (confluenceUser != null) {
-        logger.info("Using CONFLUENCE_USER environment variable");
-      }
-    }
-
-    if (confluenceToken == null) {
-      confluenceToken = System.getenv("CONFLUENCE_TOKEN");
-      if (confluenceToken != null) {
-        logger.info("Using CONFLUENCE_TOKEN environment variable");
-      }
-    }
-
-    if (confluenceSpaceKey == null) {
-      confluenceSpaceKey = System.getenv("CONFLUENCE_SPACE_KEY");
-      if (confluenceSpaceKey != null) {
-        logger.info("Using CONFLUENCE_SPACE_KEY environment variable");
-      }
-    }
+    confluenceUrl = loadFromEnvIfNull(confluenceUrl, ENV_CONFLUENCE_URL);
+    confluenceUser = loadFromEnvIfNull(confluenceUser, ENV_CONFLUENCE_USER);
+    confluenceToken = loadFromEnvIfNull(confluenceToken, ENV_CONFLUENCE_TOKEN);
+    confluenceSpaceKey = loadFromEnvIfNull(confluenceSpaceKey, ENV_CONFLUENCE_SPACE_KEY);
 
     // Load Structurizr configuration from environment variables (only if no workspace file
     // provided)
     if (workspaceFile == null) {
-      if (structurizrUrl == null) {
-        structurizrUrl = System.getenv("STRUCTURIZR_URL");
-        if (structurizrUrl != null) {
-          logger.info("Using STRUCTURIZR_URL environment variable");
-        }
-      }
-
-      if (structurizrApiKey == null) {
-        structurizrApiKey = System.getenv("STRUCTURIZR_API_KEY");
-        if (structurizrApiKey != null) {
-          logger.info("Using STRUCTURIZR_API_KEY environment variable");
-        }
-      }
-
-      if (structurizrApiSecret == null) {
-        structurizrApiSecret = System.getenv("STRUCTURIZR_API_SECRET");
-        if (structurizrApiSecret != null) {
-          logger.info("Using STRUCTURIZR_API_SECRET environment variable");
-        }
-      }
+      structurizrUrl = loadFromEnvIfNull(structurizrUrl, ENV_STRUCTURIZR_URL);
+      structurizrApiKey = loadFromEnvIfNull(structurizrApiKey, ENV_STRUCTURIZR_API_KEY);
+      structurizrApiSecret = loadFromEnvIfNull(structurizrApiSecret, ENV_STRUCTURIZR_API_SECRET);
 
       if (structurizrWorkspaceId == null) {
-        String workspaceIdStr = System.getenv("STRUCTURIZR_WORKSPACE_ID");
+        String workspaceIdStr = System.getenv(ENV_STRUCTURIZR_WORKSPACE_ID);
         if (workspaceIdStr != null) {
           try {
             structurizrWorkspaceId = Long.parseLong(workspaceIdStr);
-            logger.info("Using STRUCTURIZR_WORKSPACE_ID environment variable");
+            logger.info("Using {} environment variable", ENV_STRUCTURIZR_WORKSPACE_ID);
           } catch (NumberFormatException e) {
             logger.warn(
-                "Invalid STRUCTURIZR_WORKSPACE_ID environment variable: {}", workspaceIdStr);
+                "Invalid {} environment variable: {}",
+                ENV_STRUCTURIZR_WORKSPACE_ID,
+                workspaceIdStr);
           }
         }
       }
     }
   }
 
+  /**
+   * Loads a configuration value from environment variable if the current value is null.
+   *
+   * @param currentValue the current configuration value
+   * @param envVarName the environment variable name
+   * @return the environment variable value if current is null, otherwise the current value
+   */
+  private String loadFromEnvIfNull(String currentValue, String envVarName) {
+    if (currentValue == null) {
+      String envValue = System.getenv(envVarName);
+      if (envValue != null) {
+        logger.info("Using {} environment variable", envVarName);
+        return envValue;
+      }
+    }
+    return currentValue;
+  }
+
   private boolean validateConfiguration() {
     // Validate Confluence configuration
-    if (confluenceUrl == null || confluenceUrl.trim().isEmpty()) {
-      System.err.println(
-          "❌ Error: --confluence-url is required (or set CONFLUENCE_URL environment variable)");
+    if (!isConfigValid(confluenceUrl, "--confluence-url", ENV_CONFLUENCE_URL)) {
       return false;
     }
-
-    if (confluenceUser == null || confluenceUser.trim().isEmpty()) {
-      System.err.println(
-          "❌ Error: --confluence-user is required (or set CONFLUENCE_USER environment variable)");
+    if (!isConfigValid(confluenceUser, "--confluence-user", ENV_CONFLUENCE_USER)) {
       return false;
     }
-
-    if (confluenceToken == null || confluenceToken.trim().isEmpty()) {
-      System.err.println(
-          "❌ Error: --confluence-token is required (or set CONFLUENCE_TOKEN environment variable)");
+    if (!isConfigValid(confluenceToken, "--confluence-token", ENV_CONFLUENCE_TOKEN)) {
       return false;
     }
 
     // Validate workspace source
     if (workspaceFile == null) {
       // Using Structurizr on-premise, validate those parameters
-      if (structurizrUrl == null || structurizrUrl.trim().isEmpty()) {
-        System.err.println(
-            "❌ Error: --structurizr-url is required when not using --workspace-file (or set STRUCTURIZR_URL environment variable)");
+      if (!isConfigValid(
+          structurizrUrl,
+          "--structurizr-url",
+          ENV_STRUCTURIZR_URL,
+          " when not using --workspace-file")) {
         return false;
       }
-
-      if (structurizrApiKey == null || structurizrApiKey.trim().isEmpty()) {
-        System.err.println(
-            "❌ Error: --structurizr-key is required when not using --workspace-file (or set STRUCTURIZR_API_KEY environment variable)");
+      if (!isConfigValid(
+          structurizrApiKey,
+          "--structurizr-key",
+          ENV_STRUCTURIZR_API_KEY,
+          " when not using --workspace-file")) {
         return false;
       }
-
-      if (structurizrApiSecret == null || structurizrApiSecret.trim().isEmpty()) {
-        System.err.println(
-            "❌ Error: --structurizr-secret is required when not using --workspace-file (or set STRUCTURIZR_API_SECRET environment variable)");
+      if (!isConfigValid(
+          structurizrApiSecret,
+          "--structurizr-secret",
+          ENV_STRUCTURIZR_API_SECRET,
+          " when not using --workspace-file")) {
         return false;
       }
 
       if (structurizrWorkspaceId == null) {
         System.err.println(
-            "❌ Error: --structurizr-workspace-id is required when not using --workspace-file (or set STRUCTURIZR_WORKSPACE_ID environment variable)");
+            "❌ Error: --structurizr-workspace-id is required when not using --workspace-file (or set "
+                + ENV_STRUCTURIZR_WORKSPACE_ID
+                + " environment variable)");
         return false;
       }
     }
@@ -358,10 +346,50 @@ public class ExportCommand implements Runnable {
     // space
     if (confluenceSpaceKey == null && pageId == null) {
       System.err.println(
-          "❌ Error: --confluence-space is required (or set CONFLUENCE_SPACE_KEY environment variable)");
+          "❌ Error: --confluence-space is required (or set "
+              + ENV_CONFLUENCE_SPACE_KEY
+              + " environment variable)");
       return false;
     }
 
+    return true;
+  }
+
+  /**
+   * Validates that a configuration value is not null or empty.
+   *
+   * @param value the value to validate
+   * @param optionName the CLI option name (e.g., "--confluence-url")
+   * @param envVarName the environment variable name
+   * @return true if valid, false otherwise
+   */
+  private boolean isConfigValid(String value, String optionName, String envVarName) {
+    return isConfigValid(value, optionName, envVarName, "");
+  }
+
+  /**
+   * Validates that a configuration value is not null or empty, with additional context message.
+   *
+   * @param value the value to validate
+   * @param optionName the CLI option name (e.g., "--structurizr-url")
+   * @param envVarName the environment variable name
+   * @param contextMessage additional context for the error message (e.g., " when not using
+   *     --workspace-file")
+   * @return true if valid, false otherwise
+   */
+  private boolean isConfigValid(
+      String value, String optionName, String envVarName, String contextMessage) {
+    if (value == null || value.trim().isEmpty()) {
+      System.err.println(
+          "❌ Error: "
+              + optionName
+              + " is required"
+              + contextMessage
+              + " (or set "
+              + envVarName
+              + " environment variable)");
+      return false;
+    }
     return true;
   }
 
