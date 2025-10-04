@@ -4,6 +4,7 @@ import arnaudroubinet.structurizr.confluence.client.ConfluenceClient;
 import arnaudroubinet.structurizr.confluence.client.ConfluenceConfig;
 import arnaudroubinet.structurizr.confluence.client.StructurizrConfig;
 import arnaudroubinet.structurizr.confluence.client.StructurizrWorkspaceLoader;
+import arnaudroubinet.structurizr.confluence.generator.DocumentGenerator;
 import arnaudroubinet.structurizr.confluence.processor.AsciiDocConverter;
 import arnaudroubinet.structurizr.confluence.processor.DiagramExporter;
 import arnaudroubinet.structurizr.confluence.processor.HtmlToAdfConverter;
@@ -47,6 +48,7 @@ public class ConfluenceExporter {
   private final HtmlToAdfConverter htmlToAdfConverter;
   private final AsciiDocConverter asciiDocConverter;
   private final MarkdownConverter markdownConverter;
+  private final DocumentGenerator documentGenerator;
   private List<File> exportedDiagrams;
 
   /** Creates an exporter that loads workspaces from a Structurizr on-premise instance. */
@@ -58,6 +60,7 @@ public class ConfluenceExporter {
     this.htmlToAdfConverter = new HtmlToAdfConverter();
     this.asciiDocConverter = new AsciiDocConverter();
     this.markdownConverter = new MarkdownConverter();
+    this.documentGenerator = new DocumentGenerator();
   }
 
   /** Creates an exporter for use with provided workspace objects (original behavior). */
@@ -68,6 +71,7 @@ public class ConfluenceExporter {
     this.htmlToAdfConverter = new HtmlToAdfConverter();
     this.asciiDocConverter = new AsciiDocConverter();
     this.markdownConverter = new MarkdownConverter();
+    this.documentGenerator = new DocumentGenerator();
   }
 
   /**
@@ -144,7 +148,7 @@ public class ConfluenceExporter {
     }
 
     String mainPageTitle = branchName;
-    Document mainDoc = generateWorkspaceDocumentation(workspace, branchName);
+    Document mainDoc = documentGenerator.generateWorkspaceDocumentation(workspace, branchName);
     String mainPageId =
         confluenceClient.createOrUpdatePage(mainPageTitle, convertDocumentToJson(mainDoc));
 
@@ -313,7 +317,7 @@ public class ConfluenceExporter {
 
     // Create branch subpage under parent page
     String branchPageTitle = branchName;
-    Document branchDoc = generateWorkspaceDocumentation(workspace, branchName);
+    Document branchDoc = documentGenerator.generateWorkspaceDocumentation(workspace, branchName);
     String branchPageId =
         confluenceClient.createOrUpdatePage(
             branchPageTitle, convertDocumentToJson(branchDoc), parentPageId);
@@ -497,58 +501,6 @@ public class ConfluenceExporter {
 
   private String convertDocumentToJson(Document document) throws Exception {
     return objectMapper.writeValueAsString(document);
-  }
-
-  private Document generateWorkspaceDocumentation(Workspace workspace, String branchName) {
-    Document doc = Document.create();
-
-    // Description
-    if (workspace.getDescription() != null && !workspace.getDescription().trim().isEmpty()) {
-      doc.paragraph(workspace.getDescription());
-    }
-
-    // Add views section overview only (pas de sommaire manuel)
-    ViewSet views = workspace.getViews();
-
-    // Views Overview (sections uniquement, pas de titre global)
-    if (hasViews(views)) {
-      addViewsOverview(doc, views.getSystemLandscapeViews(), "System Landscape Views");
-      addViewsOverview(doc, views.getSystemContextViews(), "System Context Views");
-      addViewsOverview(doc, views.getContainerViews(), "Container Views");
-      addViewsOverview(doc, views.getComponentViews(), "Component Views");
-      addViewsOverview(doc, views.getDeploymentViews(), "Deployment Views");
-    }
-
-    return doc;
-  }
-
-  private boolean hasViews(ViewSet views) {
-    return (views.getSystemLandscapeViews().size() > 0
-        || views.getSystemContextViews().size() > 0
-        || views.getContainerViews().size() > 0
-        || views.getComponentViews().size() > 0
-        || views.getDeploymentViews().size() > 0);
-  }
-
-  private void addViewsOverview(Document doc, Collection<? extends View> views, String title) {
-    if (!views.isEmpty()) {
-      doc.h3(title);
-
-      for (View view : views) {
-        String viewTitle = view.getTitle();
-        if (viewTitle == null || viewTitle.trim().isEmpty()) {
-          viewTitle = view.getKey() != null ? view.getKey() : "Untitled View";
-        }
-        doc.h4(viewTitle);
-
-        if (view.getDescription() != null && !view.getDescription().trim().isEmpty()) {
-          doc.paragraph(view.getDescription());
-        }
-
-        // Add view key information
-        doc.paragraph("Key: " + view.getKey());
-      }
-    }
   }
 
   /**
