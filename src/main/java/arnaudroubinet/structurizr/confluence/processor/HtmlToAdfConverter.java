@@ -25,19 +25,14 @@ public class HtmlToAdfConverter {
   private static final Logger logger = LoggerFactory.getLogger(HtmlToAdfConverter.class);
   private static final ObjectMapper objectMapper = new ObjectMapper();
 
-  // Image upload manager for handling external images
   private ImageUploadManager imageUploadManager;
-  private String currentPageId; // Context for image uploads
-  private Function<String, File> diagramResolver; // Function to resolve local diagram files
+  private String currentPageId;
+  private Function<String, File> diagramResolver;
 
-  // (supprimé) Ancienne map de correspondance HTML->ADF non utilisée
-
-  /** Sets the image upload manager for handling external images. */
   public void setImageUploadManager(ImageUploadManager imageUploadManager) {
     this.imageUploadManager = imageUploadManager;
   }
 
-  /** Sets the current page ID context for image uploads. */
   public void setCurrentPageId(String pageId) {
     this.currentPageId = pageId;
   }
@@ -51,23 +46,12 @@ public class HtmlToAdfConverter {
     this.diagramResolver = diagramResolver;
   }
 
-  /**
-   * Converts HTML content to ADF document.
-   *
-   * @param htmlContent the HTML content to convert
-   * @param title the document title
-   * @return ADF document
-   */
   public Document convertToAdf(String htmlContent, String title) {
     logger.info("Converting HTML content to ADF for document: {}", title);
 
     try {
-      // Use the JSON method to get properly processed tables
       String adfJson = convertToAdfJson(htmlContent, title);
 
-      // Try to convert back to Document
-      // Note: This may lose table structure due to ADF Builder limitations,
-      // but it's the best we can do for backward compatibility
       JsonNode adfNode = objectMapper.readTree(adfJson);
       Document doc = objectMapper.treeToValue(adfNode, Document.class);
 
@@ -78,7 +62,7 @@ public class HtmlToAdfConverter {
     } catch (Exception e) {
       logger.error("Error converting HTML to ADF", e);
       throw new IllegalStateException(
-          "Conversion HTML vers ADF échouée: " + (title != null ? title : "(sans titre)"), e);
+          "HTML to ADF conversion failed: " + (title != null ? title : "(no title)"), e);
     }
   }
 
@@ -93,10 +77,8 @@ public class HtmlToAdfConverter {
     logger.info("Converting HTML content to ADF JSON for document: {}", title);
 
     try {
-      // Extraire le titre de la page du contenu HTML (H1 en début de page en priorité)
       TitleAndContent extracted = extractPageTitle(htmlContent);
 
-      // Le H1 en début de page a la priorité absolue sur le titre fourni
       String pageTitle = extracted.title != null ? extracted.title : title;
       String contentWithoutTitle = extracted.content;
 
@@ -112,16 +94,12 @@ public class HtmlToAdfConverter {
             contentWithoutTitle != null ? contentWithoutTitle.length() : 0);
       }
 
-      // Create document without post-processing to avoid double processing
       Document doc = convertToAdfWithoutPostProcessing(contentWithoutTitle, pageTitle);
 
-      // Convert to JSON
       String adfJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(doc);
 
-      // Process tables using the post-processor (only once)
       String processedJson = AdfTablePostProcessor.postProcessTables(adfJson);
 
-      // Enforce center alignment for paragraphs/headings/mediaSingle across the document
       processedJson = AdfAlignmentPostProcessor.centerAlignAll(processedJson);
 
       logger.info("Successfully converted HTML to ADF JSON with native tables");
@@ -130,7 +108,7 @@ public class HtmlToAdfConverter {
     } catch (Exception e) {
       logger.error("Error converting HTML to ADF JSON", e);
       throw new IllegalStateException(
-          "Conversion HTML vers ADF JSON échouée: " + (title != null ? title : "(sans titre)"), e);
+          "HTML to ADF JSON conversion failed: " + (title != null ? title : "(no title)"), e);
     }
   }
 
