@@ -5,6 +5,7 @@ import arnaudroubinet.structurizr.confluence.client.ConfluenceConfig;
 import arnaudroubinet.structurizr.confluence.client.StructurizrConfig;
 import arnaudroubinet.structurizr.confluence.client.StructurizrWorkspaceLoader;
 import arnaudroubinet.structurizr.confluence.exporter.AdrExporter;
+import arnaudroubinet.structurizr.confluence.exporter.DocumentationSectionExporter;
 import arnaudroubinet.structurizr.confluence.generator.DocumentGenerator;
 import arnaudroubinet.structurizr.confluence.processor.AsciiDocConverter;
 import arnaudroubinet.structurizr.confluence.processor.DiagramExporter;
@@ -49,6 +50,7 @@ public class ConfluenceExporter {
   private final MarkdownConverter markdownConverter;
   private final DocumentGenerator documentGenerator;
   private final AdrExporter adrExporter;
+  private final DocumentationSectionExporter documentationSectionExporter;
   private List<File> exportedDiagrams;
 
   /** Creates an exporter that loads workspaces from a Structurizr on-premise instance. */
@@ -68,6 +70,9 @@ public class ConfluenceExporter {
             htmlToAdfConverter,
             asciiDocConverter,
             markdownConverter);
+    this.documentationSectionExporter =
+        new DocumentationSectionExporter(
+            confluenceClient, htmlToAdfConverter, asciiDocConverter, markdownConverter);
   }
 
   /** Creates an exporter for use with provided workspace objects (original behavior). */
@@ -86,6 +91,9 @@ public class ConfluenceExporter {
             htmlToAdfConverter,
             asciiDocConverter,
             markdownConverter);
+    this.documentationSectionExporter =
+        new DocumentationSectionExporter(
+            confluenceClient, htmlToAdfConverter, asciiDocConverter, markdownConverter);
   }
 
   /**
@@ -438,79 +446,8 @@ public class ConfluenceExporter {
    */
   public void exportWorkspaceDocumentationSections(
       Workspace workspace, String parentPageId, String branchName) throws Exception {
-    if (workspace.getDocumentation() == null
-        || workspace.getDocumentation().getSections().isEmpty()) {
-      logger.info("No documentation sections found in workspace");
-      return;
-    }
-
-    logger.info(
-        "Export des sections de documentation du workspace '{}', {} section(s)",
-        workspace.getName(),
-        workspace.getDocumentation().getSections().size());
-
-    // Export each section as Confluence page
-    for (com.structurizr.documentation.Section section :
-        workspace.getDocumentation().getSections()) {
-      String filenameFallback = section.getFilename();
-      String content = section.getContent();
-
-      String htmlContent;
-      String formatName = section.getFormat() != null ? section.getFormat().name() : "";
-
-      if (isAsciiDocFormat(formatName)) {
-        logger.debug("Converting AsciiDoc content for section (filename: {})", filenameFallback);
-        String workspaceId = getWorkspaceId(workspace);
-        // Passer le filename comme titre indicatif uniquement (log), pas de prise en compte
-        // fonctionnelle
-        htmlContent =
-            asciiDocConverter.convertToHtml(content, filenameFallback, workspaceId, branchName);
-      } else if (isMarkdownFormat(formatName)) {
-        logger.debug(
-            "Markdown content detected for section (filename: {}): converting to HTML for title extraction",
-            filenameFallback);
-        // Conversion Markdown robuste avec extensions
-        htmlContent = markdownConverter.toHtml(content);
-      } else {
-        logger.debug(
-            "Treating content as HTML for section (filename: {}), format: {}",
-            filenameFallback,
-            formatName);
-        htmlContent = content; // Assume HTML ou texte brut
-      }
-
-      // Extraire le titre du contenu HTML (premier H1) si disponible
-      String extractedTitle = htmlToAdfConverter.extractPageTitleOnly(htmlContent);
-      String actualTitle =
-          (extractedTitle != null && !extractedTitle.trim().isEmpty())
-              ? extractedTitle
-              : filenameFallback;
-
-      // Setup image upload manager for this page
-      ImageUploadManager imageUploadManager = new ImageUploadManager(confluenceClient);
-      htmlToAdfConverter.setImageUploadManager(imageUploadManager);
-
-      // Create page first to get the page ID for image uploads
-      // Title policy: use first H1 if present; otherwise fallback to filename (no branch prefix)
-      String pageTitle = actualTitle;
-      String pageId =
-          confluenceClient.createOrUpdatePage(
-              pageTitle, "{\"version\":1,\"type\":\"doc\",\"content\":[]}", parentPageId);
-
-      // Set page context for image uploads
-      htmlToAdfConverter.setCurrentPageId(pageId);
-
-      // Convertir HTML vers ADF JSON pour Confluence avec support des tables natives
-      String adfJson = htmlToAdfConverter.convertToAdfJson(htmlContent, actualTitle);
-
-      // Update page with actual content
-      confluenceClient.updatePageById(pageId, pageTitle, adfJson);
-      logger.info(
-          "Section exported to page ID: {} avec le titre: '{}'",
-          filenameFallback,
-          pageId,
-          pageTitle);
-    }
+    documentationSectionExporter.exportWorkspaceDocumentationSections(
+        workspace, parentPageId, branchName);
   }
 
   private String convertDocumentToJson(Document document) throws Exception {
