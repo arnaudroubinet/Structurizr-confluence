@@ -298,54 +298,38 @@ public class ExportCommand implements Runnable {
 
   private boolean validateConfiguration() {
     // Validate Confluence configuration
-    if (confluenceUrl == null || confluenceUrl.trim().isEmpty()) {
-      System.err.println(
-          "❌ Error: --confluence-url is required (or set "
-              + ENV_CONFLUENCE_URL
-              + " environment variable)");
+    if (!isConfigValid(confluenceUrl, "--confluence-url", ENV_CONFLUENCE_URL)) {
       return false;
     }
-
-    if (confluenceUser == null || confluenceUser.trim().isEmpty()) {
-      System.err.println(
-          "❌ Error: --confluence-user is required (or set "
-              + ENV_CONFLUENCE_USER
-              + " environment variable)");
+    if (!isConfigValid(confluenceUser, "--confluence-user", ENV_CONFLUENCE_USER)) {
       return false;
     }
-
-    if (confluenceToken == null || confluenceToken.trim().isEmpty()) {
-      System.err.println(
-          "❌ Error: --confluence-token is required (or set "
-              + ENV_CONFLUENCE_TOKEN
-              + " environment variable)");
+    if (!isConfigValid(confluenceToken, "--confluence-token", ENV_CONFLUENCE_TOKEN)) {
       return false;
     }
 
     // Validate workspace source
     if (workspaceFile == null) {
       // Using Structurizr on-premise, validate those parameters
-      if (structurizrUrl == null || structurizrUrl.trim().isEmpty()) {
-        System.err.println(
-            "❌ Error: --structurizr-url is required when not using --workspace-file (or set "
-                + ENV_STRUCTURIZR_URL
-                + " environment variable)");
+      if (!isConfigValid(
+          structurizrUrl,
+          "--structurizr-url",
+          ENV_STRUCTURIZR_URL,
+          " when not using --workspace-file")) {
         return false;
       }
-
-      if (structurizrApiKey == null || structurizrApiKey.trim().isEmpty()) {
-        System.err.println(
-            "❌ Error: --structurizr-key is required when not using --workspace-file (or set "
-                + ENV_STRUCTURIZR_API_KEY
-                + " environment variable)");
+      if (!isConfigValid(
+          structurizrApiKey,
+          "--structurizr-key",
+          ENV_STRUCTURIZR_API_KEY,
+          " when not using --workspace-file")) {
         return false;
       }
-
-      if (structurizrApiSecret == null || structurizrApiSecret.trim().isEmpty()) {
-        System.err.println(
-            "❌ Error: --structurizr-secret is required when not using --workspace-file (or set "
-                + ENV_STRUCTURIZR_API_SECRET
-                + " environment variable)");
+      if (!isConfigValid(
+          structurizrApiSecret,
+          "--structurizr-secret",
+          ENV_STRUCTURIZR_API_SECRET,
+          " when not using --workspace-file")) {
         return false;
       }
 
@@ -368,6 +352,44 @@ public class ExportCommand implements Runnable {
       return false;
     }
 
+    return true;
+  }
+
+  /**
+   * Validates that a configuration value is not null or empty.
+   *
+   * @param value the value to validate
+   * @param optionName the CLI option name (e.g., "--confluence-url")
+   * @param envVarName the environment variable name
+   * @return true if valid, false otherwise
+   */
+  private boolean isConfigValid(String value, String optionName, String envVarName) {
+    return isConfigValid(value, optionName, envVarName, "");
+  }
+
+  /**
+   * Validates that a configuration value is not null or empty, with additional context message.
+   *
+   * @param value the value to validate
+   * @param optionName the CLI option name (e.g., "--structurizr-url")
+   * @param envVarName the environment variable name
+   * @param contextMessage additional context for the error message (e.g., " when not using
+   *     --workspace-file")
+   * @return true if valid, false otherwise
+   */
+  private boolean isConfigValid(
+      String value, String optionName, String envVarName, String contextMessage) {
+    if (value == null || value.trim().isEmpty()) {
+      System.err.println(
+          "❌ Error: "
+              + optionName
+              + " is required"
+              + contextMessage
+              + " (or set "
+              + envVarName
+              + " environment variable)");
+      return false;
+    }
     return true;
   }
 
