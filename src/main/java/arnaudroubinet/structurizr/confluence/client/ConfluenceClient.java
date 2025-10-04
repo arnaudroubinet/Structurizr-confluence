@@ -31,14 +31,8 @@ public class ConfluenceClient {
     this.objectMapper = new ObjectMapper();
     RestClientBuilder builder = createRestClientBuilder();
 
-    // Configure SSL trust settings using Quarkus TLS configuration approach
     if (SslTrustUtils.shouldDisableSslVerification()) {
       try {
-        // In Quarkus 3.x, we should use TLS configuration instead of directly setting SSLContext
-        // since RestClientBuilder.sslContext() is not supported in newer versions.
-        //
-        // We use the global SSL context installation as the most compatible approach
-        // across different Quarkus REST client implementations (RESTEasy, SmallRye, etc.)
         logger.warn(
             "SSL certificate verification disabled for Confluence REST client - using global SSL context");
         SslTrustUtils.installTrustAllSslContext();
@@ -56,18 +50,15 @@ public class ConfluenceClient {
   }
 
   private static RestClientBuilder createRestClientBuilder() {
-    // Try RESTEasy MicroProfile implementation first
     try {
       Class<?> impl = Class.forName("org.jboss.resteasy.microprofile.client.RestClientBuilderImpl");
       return (RestClientBuilder) impl.getDeclaredConstructor().newInstance();
     } catch (Throwable ignore) {
-      // ignore and try SmallRye next
     }
     try {
       Class<?> impl = Class.forName("io.smallrye.restclient.RestClientBuilderImpl");
       return (RestClientBuilder) impl.getDeclaredConstructor().newInstance();
     } catch (Throwable ignore) {
-      // ignore and fallback to SPI (may fail if resolver not present)
     }
     return RestClientBuilder.newBuilder();
   }
